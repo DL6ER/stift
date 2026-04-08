@@ -1,0 +1,45 @@
+# Caddy v2 config for Stift behind HTTPS.
+# Used by docker-compose.proxied.yml.
+#
+# Caddy reads STIFT_DOMAIN and ADMIN_EMAIL from the environment (set by
+# docker-compose.proxied.yml from your .env file).
+
+{
+	email {$ADMIN_EMAIL}
+	# Use Let's Encrypt's production CA. Switch to acme_ca
+	# https://acme-staging-v02.api.letsencrypt.org/directory while testing
+	# to avoid hitting rate limits.
+}
+
+{$STIFT_DOMAIN} {
+	# All requests proxied to the Stift container's nginx on port 8080.
+	# The container runs as a non-root user, so nginx listens on a
+	# non-privileged port internally.
+	reverse_proxy stift:8080
+
+	# Security headers. The Stift container's nginx already sets most of
+	# these, but we re-set them here so the values stay consistent across
+	# upstreams and so HSTS (only meaningful over HTTPS) is added.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=(), usb=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		Cross-Origin-Resource-Policy "same-origin"
+		# Stift makes no third-party requests; lock that down hard.
+		Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
+		# Don't leak that we're behind Caddy.
+		-Server
+	}
+
+	# Compression for text assets.
+	encode gzip zstd
+
+	# Don't log healthchecks / favicon requests at access level.
+	log {
+		output stdout
+		format console
+	}
+}

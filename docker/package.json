@@ -1,0 +1,9 @@
+{
+  "name": "stift-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "better-sqlite3": "^11.3.0"
+  }
+}
