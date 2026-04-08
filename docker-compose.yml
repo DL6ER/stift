@@ -1,0 +1,27 @@
+services:
+  stift:
+    build:
+      context: .
+      args:
+        - DEVMODE=${DEVMODE:-false}
+    ports:
+      # Host port (override with PORT env) -> container's nginx on 8080.
+      # The container runs as the unprivileged `node` user and
+      # nginx therefore listens on a non-privileged port internally.
+      - "${PORT:-8080}:8080"
+    volumes:
+      - ./data:/data
+    environment:
+      - DATA_DIR=/data
+      - COMPRESS_UPLOADS=${COMPRESS_UPLOADS:-true}
+      - MAX_PROJECT_SIZE_MB=${MAX_PROJECT_SIZE_MB:-15}
+      - MAX_PROJECTS_PER_USER=${MAX_PROJECTS_PER_USER:-50}  # default per-user quota assigned at registration
+      - ALLOW_REGISTRATION=${ALLOW_REGISTRATION:-true}      # set false on public instances to lock the user table
+      - DEV_MODE=${DEV_MODE:-false}                         # verbose request logging + UI banner; never enable in production
+      - NODE_ENV=${NODE_ENV:-production}
+      - FOOTER_LINKS=${FOOTER_LINKS:-}                      # JSON array of {label,url} rendered in the app footer
+      - SPONSOR_URL=${SPONSOR_URL:-}                        # when set + ALLOW_REGISTRATION=false, auth dialog shows a sponsor CTA
+      - CORS_ORIGINS=${CORS_ORIGINS:-}                      # comma-separated allowlist; empty = same-origin only
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-}
+      - ADMIN_API_KEY=${ADMIN_API_KEY:-}
+    restart: unless-stopped
