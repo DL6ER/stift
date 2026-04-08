@@ -1,0 +1,63 @@
+name: CI
+
+# Runs on every push to any branch and on every pull request.
+# Mirrors the local "npm test && npm run build" pattern that the
+# PR checklist asks contributors to run before opening a PR -- the
+# CI just makes it visible on the GitHub side.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+# Stop in-progress runs for the same ref when a new push lands. Cuts
+# the wait time on rebases / force-pushes by half.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: vitest + build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        # `npm ci` is the CI-friendly install: it requires
+        # package-lock.json to exist, refuses to update it, and
+        # gives reproducible installs.
+        run: npm ci
+
+      - name: Run vitest
+        run: npm test
+
+      - name: Type check + production build
+        # `npm run build` is `tsc -b && vite build`, so it covers
+        # both type errors and the actual bundle. The CI catches
+        # any TS regression that the unit tests miss.
+        run: npm run build
+
+      - name: Upload build artifacts
+        # Only runs when every previous step succeeded (default
+        # GitHub Actions semantics, but stated explicitly here so
+        # the intent is obvious if someone later adds a step with
+        # continue-on-error: true). The artifact is useful for
+        # debugging when a build passes locally but fails in CI;
+        # reviewers can download the dist and inspect it.
+        # Retained for 7 days to avoid filling up the org storage.
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7

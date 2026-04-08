@@ -1,0 +1,176 @@
+name: Release
+
+# Builds the production Stift container image and publishes it to
+# the configured registries. Runs on:
+#
+#   - every push to main           tags the image with `latest` + the commit SHA
+#   - every git tag matching v*    tags the image with the version + `latest`
+#   - manual workflow_dispatch     useful for re-running on a fixed ref
+#
+# Pushes to:
+#
+#   ghcr.io/<repo-owner>/stift   always (auth via the built-in GITHUB_TOKEN)
+#   docker.io/<DOCKERHUB_USERNAME>/stift   only when both DOCKERHUB_USERNAME
+#                                          and DOCKERHUB_TOKEN repo secrets
+#                                          are set; otherwise that step is
+#                                          silently skipped so the workflow
+#                                          stays green for forks and for
+#                                          first-time setups
+#
+# Both targets get a multi-arch manifest covering linux/amd64 and
+# linux/arm64. better-sqlite3 is the only native dep and it builds
+# cleanly on both archs from the alpine base image.
+#
+# CI must pass before this workflow runs -- the `needs: ci` clause
+# below makes the release wait on the CI workflow's success.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref to build (branch, tag, or SHA)'
+        required: false
+        default: 'main'
+
+# One release run at a time per ref. If a second push lands while
+# the first is still building, the first one keeps going and the
+# second one waits. We do NOT cancel-in-progress here because half-
+# pushed multi-arch manifests on the registry are worse than the
+# extra wait.
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    # Re-run the CI suite as a gate. Yes, the CI workflow probably
+    # already ran on the same commit -- but a release workflow that
+    # depends on something OTHER than its own checks is fragile.
+    # We re-run it here so the release-build job can have a single
+    # `needs: ci` upstream and short-circuit cleanly if anything is
+    # broken.
+    name: ci
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  release:
+    name: build + push container
+    needs: ci
+    runs-on: ubuntu-latest
+
+    # Permissions the workflow needs:
+    #   contents: read    so it can check out the source
+    #   packages: write   so it can push to ghcr.io with GITHUB_TOKEN
+    #   id-token: write   for build provenance attestation
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    # Hoist the optional Docker Hub secret into a job-level env var so
+    # the "Log in to Docker Hub" step can gate itself on it. GitHub
+    # Actions does not allow `secrets.*` directly inside step `if:`
+    # conditions ("Unrecognized named-value: 'secrets'"), but it does
+    # allow `env.*`, so the standard workaround is to surface the
+    # secret as an env var first and check that.
+    env:
+      HAS_DOCKERHUB: ${{ secrets.DOCKERHUB_TOKEN != '' && 'yes' || '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - name: Set up QEMU
+        # Required for building linux/arm64 from a linux/amd64 runner.
+        # The buildx step below uses QEMU to emulate the foreign arch.
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        # buildx is the multi-platform builder backend. Standard
+        # `docker build` cannot produce multi-arch manifests; buildx
+        # can.
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        # Always logged in; the GITHUB_TOKEN is provided by the
+        # workflow runner with packages:write permission scoped to
+        # this repo's owner namespace.
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        # Optional second push target. Skipped silently when the
+        # operator hasn't set up Docker Hub credentials yet (typical
+        # for first-time setups and for forks). When DOCKERHUB_TOKEN
+        # is set we expect DOCKERHUB_USERNAME to be set too. The gate
+        # uses env.HAS_DOCKERHUB rather than secrets.* directly
+        # because the latter is not allowed in step `if:` expressions.
+        if: env.HAS_DOCKERHUB == 'yes'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Compute image tags
+        # Builds the list of registry references the image should
+        # be pushed under. Always includes ghcr.io; conditionally
+        # includes docker.io when credentials are present. The
+        # docker/metadata-action handles tag-vs-branch-vs-sha
+        # logic for us:
+        #
+        #   push to main          -> :latest, :main, :sha-<short>
+        #   push to tag v1.2.3    -> :1.2.3, :1.2, :1, :latest, :sha-<short>
+        #   workflow_dispatch     -> :sha-<short>
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/${{ github.repository_owner }}/stift
+            ${{ secrets.DOCKERHUB_TOKEN != '' && format('docker.io/{0}/stift', secrets.DOCKERHUB_USERNAME) || '' }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Layer caching across runs via GitHub Actions cache.
+          # Cuts re-build time from ~5 min to ~30 s when only
+          # source code changes (the apk + npm install layers
+          # come from cache).
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Build provenance attestation -- proves the image came
+          # from this exact source ref + this exact runner. Surfaced
+          # in the GitHub UI under the package's "attestations" tab.
+          provenance: true
+          sbom: true

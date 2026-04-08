@@ -1,0 +1,78 @@
+# Stift behind Caddy with automatic HTTPS via Let's Encrypt.
+#
+# Use this compose file when exposing Stift to the public Internet. The
+# default `docker-compose.yml` binds the app directly on a host port and is
+# only safe for internal/secure networks. Caddy adds:
+#
+#   - automatic HTTPS (Let's Encrypt cert provisioning + renewal)
+#   - HTTP -> HTTPS redirect
+#   - HSTS, secure ciphers, HTTP/2 + HTTP/3
+#   - a single front door (port 443) instead of an arbitrary host port
+#
+# Prerequisites:
+#   - DNS A/AAAA record for your domain pointing at this host
+#   - Ports 80 and 443 reachable from the public Internet (Let's Encrypt
+#     uses TLS-ALPN-01 / HTTP-01 to issue certificates)
+#   - A `.env` file (or shell env) with at least:
+#         STIFT_DOMAIN=stift.example.com
+#         ADMIN_EMAIL=you@example.com
+#         ADMIN_TOKEN=<long random string>
+#
+# Usage:
+#   docker compose -f docker-compose.proxied.yml up -d --build
+#
+# To rotate the cert / restart Caddy without downtime:
+#   docker compose -f docker-compose.proxied.yml restart caddy
+
+services:
+  stift:
+    build:
+      context: .
+    # No host port mapping: only Caddy talks to it, on the internal
+    # network. The container's nginx listens on 8080 (non-privileged)
+    # because the whole container runs as the unprivileged `node` user.
+    expose:
+      - "8080"
+    volumes:
+      - ./data:/data
+    environment:
+      - DATA_DIR=/data
+      - COMPRESS_UPLOADS=${COMPRESS_UPLOADS:-true}
+      - MAX_PROJECT_SIZE_MB=${MAX_PROJECT_SIZE_MB:-15}
+      - MAX_PROJECTS_PER_USER=${MAX_PROJECTS_PER_USER:-50}
+      - ALLOW_REGISTRATION=${ALLOW_REGISTRATION:-true}
+      - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - ADMIN_API_KEY=${ADMIN_API_KEY:-}
+      - FOOTER_LINKS=${FOOTER_LINKS:-}
+      - SPONSOR_URL=${SPONSOR_URL:-}
+      - CORS_ORIGINS=${CORS_ORIGINS:-}
+      - NODE_ENV=${NODE_ENV:-production}
+    networks:
+      - internal
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"  # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data            # cert storage, DO NOT delete this
+      - caddy_config:/config
+    environment:
+      - STIFT_DOMAIN=${STIFT_DOMAIN}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+    networks:
+      - internal
+    depends_on:
+      - stift
+    restart: unless-stopped
+
+networks:
+  internal:
+
+volumes:
+  caddy_data:
+  caddy_config:

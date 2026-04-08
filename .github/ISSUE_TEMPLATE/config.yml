@@ -1,0 +1,12 @@
+# Disable blank issues so reporters use one of the templates above.
+# Surfaces a "Report a security vulnerability" link via SECURITY.md
+# rather than as a public template (security issues should be
+# reported privately first).
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/.well-known/security.txt
+    about: Please do NOT open a public issue for security vulnerabilities. See SECURITY.md for the responsible-disclosure process.
+  - name: Question / discussion
+    url: https://github.com/dl6er/stift/discussions
+    about: Open-ended questions and discussions belong in Discussions, not Issues.
