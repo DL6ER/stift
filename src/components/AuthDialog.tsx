@@ -13,9 +13,10 @@ export function AuthDialog({ onClose, onSuccess, inviteToken }: Props) {
   const registrationEnabled = useConfigStore((s) => s.registrationEnabled)
   const sponsorUrl = useConfigStore((s) => s.sponsorUrl)
   const [mode, setMode] = useState<'login' | 'register'>(inviteToken ? 'register' : 'login')
-  // With an invite, register mode is forced. Without one, fall back to login if
-  // public registration is closed.
-  const effectiveMode: 'login' | 'register' = inviteToken ? 'register' : (registrationEnabled ? mode : 'login')
+  // With an invite the user can either create a new account OR sign in
+  // to apply the invite to an existing one. Without an invite, fall
+  // back to login if public registration is closed.
+  const effectiveMode: 'login' | 'register' = inviteToken ? mode : (registrationEnabled ? mode : 'login')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -24,6 +25,7 @@ export function AuthDialog({ onClose, onSuccess, inviteToken }: Props) {
   const login = useAuthStore((s) => s.login)
   const register = useAuthStore((s) => s.register)
   const registerWithInvite = useAuthStore((s) => s.registerWithInvite)
+  const loginAndApplyInvite = useAuthStore((s) => s.loginAndApplyInvite)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -35,7 +37,15 @@ export function AuthDialog({ onClose, onSuccess, inviteToken }: Props) {
 
     setLoading(true)
     try {
-      if (effectiveMode === 'login') {
+      if (effectiveMode === 'login' && inviteToken) {
+        // Existing user applying an invite to their account
+        try {
+          await loginAndApplyInvite(username, password, inviteToken)
+          onSuccess()
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Could not apply invitation')
+        }
+      } else if (effectiveMode === 'login') {
         const success = await login(username, password)
         if (success) onSuccess()
         else setError('Invalid username or password')
@@ -132,10 +142,18 @@ export function AuthDialog({ onClose, onSuccess, inviteToken }: Props) {
 
           <button type="submit" disabled={loading}
             className="w-full py-2 bg-accent hover:bg-accent-hover text-white rounded-md font-medium text-sm disabled:opacity-50">
-            {loading ? 'Please wait...' : effectiveMode === 'login' ? 'Sign In' : 'Create Account'}
+            {loading ? 'Please wait...' : effectiveMode === 'login' ? (inviteToken ? 'Sign In and Apply Invitation' : 'Sign In') : 'Create Account'}
           </button>
 
-          {inviteToken ? null : registrationEnabled ? (
+          {inviteToken ? (
+            <p className="text-center text-xs text-gray-500">
+              {effectiveMode === 'register' ? (
+                <>Already have an account? <button type="button" onClick={() => setMode('login')} className="text-accent hover:underline">Sign in to apply this invitation</button></>
+              ) : (
+                <>New here? <button type="button" onClick={() => setMode('register')} className="text-accent hover:underline">Create a new account</button></>
+              )}
+            </p>
+          ) : registrationEnabled ? (
             <p className="text-center text-xs text-gray-500">
               {effectiveMode === 'login' ? (
                 <>No account? <button type="button" onClick={() => setMode('register')} className="text-accent hover:underline">Create one</button></>

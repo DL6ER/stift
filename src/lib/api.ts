@@ -20,6 +20,18 @@ export async function registerWithInvite(username: string, authToken: string, in
   }
 }
 
+export async function applyInvite(username: string, authToken: string, invite: string): Promise<void> {
+  const res = await fetch(`${BASE}/auth/apply-invite`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, authToken, invite }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to apply invitation' }))
+    throw new Error(err.error || 'Failed to apply invitation')
+  }
+}
+
 function authHeaders(): Record<string, string> {
   const user = localStorage.getItem('stift-auth-username')
   const token = localStorage.getItem('stift-auth-token')

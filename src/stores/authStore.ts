@@ -1,23 +1,18 @@
 import { create } from 'zustand'
 import { deriveKey, deriveAuthToken } from '../lib/crypto'
-import { registerWithInvite as apiRegisterWithInvite } from '../lib/api'
+import { registerWithInvite as apiRegisterWithInvite, applyInvite as apiApplyInvite } from '../lib/api'
 
 interface AuthState {
   username: string | null
   authToken: string | null
   encryptionKey: CryptoKey | null
   isAuthenticated: boolean
-  // Server-reported per-user capabilities. null while we haven't yet
-  // received them from the auth endpoint (e.g. immediately after
-  // registerWithInvite, before refreshProfile() runs). UI components
-  // that gate on a capability should treat null as "unknown -- assume
-  // disabled until proven otherwise" to avoid flashing an enabled UI
-  // and then stripping it back.
   canShareProjects: boolean | null
 
   login: (username: string, password: string) => Promise<boolean>
   register: (username: string, password: string) => Promise<boolean>
   registerWithInvite: (username: string, password: string, invite: string) => Promise<void>
+  loginAndApplyInvite: (username: string, password: string, invite: string) => Promise<void>
   refreshProfile: () => Promise<void>
   logout: () => void
 }
@@ -98,6 +93,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // so make a follow-up login call (using the cached authToken) to
     // pick up canShareProjects + maxProjects on the same auth round-
     // trip pattern as a regular login.
+    await get().refreshProfile()
+  },
+
+  loginAndApplyInvite: async (username, password, invite) => {
+    const authToken = await deriveAuthToken(password, username)
+    await apiApplyInvite(username.toLowerCase().trim(), authToken, invite)
+    const encryptionKey = await deriveKey(password, username)
+    set({ username, authToken, encryptionKey, isAuthenticated: true })
+    localStorage.setItem('stift-auth-username', username)
+    localStorage.setItem('stift-auth-token', authToken)
     await get().refreshProfile()
   },
 
