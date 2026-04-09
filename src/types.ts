@@ -128,6 +128,8 @@ export interface CounterAnnotation extends AnnotationBase {
   textColor: string
   radius: number
   fontSize: number
+  tailX?: number
+  tailY?: number
 }
 
 export interface TextBoxAnnotation extends AnnotationBase {

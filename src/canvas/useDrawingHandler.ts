@@ -170,8 +170,6 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
             number: num, fill: strokeColor, textColor: '#ffffff',
             radius: DEFAULT_COUNTER_RADIUS, fontSize: DEFAULT_COUNTER_RADIUS,
           } as CounterAnnotation
-          setIsDrawing(false)
-          drawingIdRef.current = null
           break
         }
 
@@ -259,6 +257,9 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
           updateAnnotation(id, { x: cx, y: cy, radiusX: rx, radiusY: ry })
           break
         }
+        case 'counter':
+          updateAnnotation(id, { tailX: pos.x - start.x, tailY: pos.y - start.y })
+          break
         case 'dimension':
           updateAnnotation(id, { points: [start.x, start.y, pos.x, pos.y] })
           break
@@ -284,6 +285,17 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
         } else {
           // Not calibrated: show pixels
           updateAnnotation(id, { label: Math.round(pxLen) + ' px' } as any)
+        }
+      }
+    }
+
+    // After drawing a counter, clear tail if too short (click without meaningful drag)
+    if (activeTool === 'counter') {
+      const ann = useProjectStore.getState().annotations.find((a) => a.id === id) as CounterAnnotation | undefined
+      if (ann && ann.tailX !== undefined && ann.tailY !== undefined) {
+        const dist = Math.sqrt(ann.tailX ** 2 + ann.tailY ** 2)
+        if (dist < 5) {
+          updateAnnotation(id, { tailX: undefined, tailY: undefined } as any)
         }
       }
     }
