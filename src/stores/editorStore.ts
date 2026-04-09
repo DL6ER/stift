@@ -85,7 +85,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   setActiveTool: (tool) => set({ activeTool: tool, selectedIds: [], croppingImageId: null }),
 
   strokeColor: DEFAULT_STROKE_COLOR,
-  fillColor: DEFAULT_FILL_COLOR,
+  fillColor: 'transparent',
   strokeWidth: DEFAULT_STROKE_WIDTH,
   fontSize: DEFAULT_FONT_SIZE,
   fontFamily: DEFAULT_FONT_FAMILY,

@@ -15,7 +15,7 @@ import {
   Annotation, ArrowAnnotation, TextAnnotation, TextBoxAnnotation, HighlightAnnotation,
   BlurAnnotation, RectangleAnnotation, EllipseAnnotation, LineAnnotation,
   DrawAnnotation, ColorBoxAnnotation, CounterAnnotation, DimensionAnnotation, StampAnnotation, STAMP_PRESETS,
-  DEFAULT_HIGHLIGHT_COLOR, DEFAULT_COUNTER_RADIUS, DEFAULT_CORNER_RADIUS,
+  DEFAULT_COUNTER_RADIUS, DEFAULT_CORNER_RADIUS, DEFAULT_HIGHLIGHT_COLOR,
 } from '../types'
 
 function getStagePointerPos(stage: Konva.Stage, stagePos: { x: number; y: number }, zoom: number) {
@@ -115,7 +115,7 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
         case 'highlight':
           annotation = {
             id, type: 'highlight', x: pos.x, y: pos.y,
-            width: 0, height: 0, fill: DEFAULT_HIGHLIGHT_COLOR, opacity: 0.35,
+            width: 0, height: 0, fill: (!fillColor || fillColor === 'transparent') ? DEFAULT_HIGHLIGHT_COLOR : fillColor, opacity: 0.35,
           } as HighlightAnnotation
           break
 
@@ -130,6 +130,7 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
           annotation = {
             id, type: 'rectangle', x: pos.x, y: pos.y,
             width: 0, height: 0, stroke: strokeColor, strokeWidth, cornerRadius: DEFAULT_CORNER_RADIUS,
+            fill: fillColor === 'transparent' ? undefined : fillColor,
           } as RectangleAnnotation
           break
 
@@ -137,6 +138,7 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
           annotation = {
             id, type: 'ellipse', x: pos.x, y: pos.y,
             radiusX: 0, radiusY: 0, stroke: strokeColor, strokeWidth,
+            fill: fillColor === 'transparent' ? undefined : fillColor,
           } as EllipseAnnotation
           break
 
@@ -159,7 +161,7 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
         case 'colorbox':
           annotation = {
             id, type: 'colorbox', x: pos.x, y: pos.y,
-            width: 0, height: 0, fill: fillColor,
+            width: 0, height: 0, fill: (!fillColor || fillColor === 'transparent') ? strokeColor : fillColor,
           } as ColorBoxAnnotation
           break
 
