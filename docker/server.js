@@ -447,6 +447,33 @@ const server = createServer(async (req, res) => {
       return json(res, { ok: true }, 201)
     }
 
+    // Apply an invitation to an EXISTING account. Same as register-with-
+    // invite but for users who already have a Stift account and just need
+    // their quotas upgraded. Requires valid credentials + a valid invite.
+    if (path === '/api/auth/apply-invite' && req.method === 'POST') {
+      const { username, authToken, invite } = await parseBody(req)
+      if (!username || !authToken || !invite) {
+        return json(res, { error: 'Username, password, and invite required' }, 400)
+      }
+      const uname = sanitizeUsername(username)
+      if (!uname) return json(res, { error: 'Invalid username' }, 400)
+      const user = getUser(uname)
+      if (!user || typeof authToken !== 'string' || !safeEqual(user.auth_token, authToken)) {
+        return json(res, { error: 'Invalid username or password' }, 401)
+      }
+      const inv = stmtGetInvite.get(invite)
+      if (!inv) return json(res, { error: 'Invitation not found' }, 404)
+      if (inv.consumed_at) return json(res, { error: 'Invitation has already been used' }, 409)
+      if (inv.expires_at && new Date(inv.expires_at) < new Date()) {
+        return json(res, { error: 'Invitation has expired' }, 410)
+      }
+      // Update quotas from the invite
+      db.prepare('UPDATE users SET max_projects = ?, can_share_projects = ? WHERE username = ?')
+        .run(inv.max_projects, inv.can_share_projects, uname)
+      stmtConsumeInvite.run(new Date().toISOString(), uname, invite)
+      return json(res, { ok: true, applied: true })
+    }
+
     if (path === '/api/auth/login' && req.method === 'POST') {
       const { username, authToken } = await parseBody(req)
       const user = getUser(username)
