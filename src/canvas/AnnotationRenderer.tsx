@@ -410,9 +410,33 @@ export function AnnotationRenderer({ stageRef }: Props) {
               />
             )
 
-          case 'counter':
+          case 'counter': {
+            const hasTail = ann.tailX !== undefined && ann.tailY !== undefined
+              && (ann.tailX !== 0 || ann.tailY !== 0)
+            let tailPoints: number[] | null = null
+            if (hasTail) {
+              const angle = Math.atan2(ann.tailY!, ann.tailX!)
+              const perp = angle + Math.PI / 2
+              const spread = ann.radius * 0.8
+              tailPoints = [
+                Math.cos(perp) * spread, Math.sin(perp) * spread,
+                ann.tailX!, ann.tailY!,
+                Math.cos(perp) * -spread, Math.sin(perp) * -spread,
+              ]
+            }
             return (
               <Group key={ann.id} {...common}>
+                {tailPoints && (
+                  <Line
+                    points={tailPoints}
+                    fill={ann.fill}
+                    closed
+                    shadowColor={ann.fill}
+                    shadowBlur={10}
+                    shadowOpacity={0.5}
+                    shadowEnabled={true}
+                  />
+                )}
                 <Circle
                   radius={ann.radius}
                   fill="#0f172a"
@@ -444,6 +468,7 @@ export function AnnotationRenderer({ stageRef }: Props) {
                 />
               </Group>
             )
+          }
 
           case 'textbox': {
             const tb = ann as TextBoxAnnotation
