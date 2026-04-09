@@ -269,6 +269,12 @@ export function PropertyPanel() {
                 onChange={(v) => { setStrokeWidth(v); updateAnn({ strokeWidth: v } as any) }} />
             )}
 
+            {/* Counter size */}
+            {ann.type === 'counter' && (
+              <SliderInput label="Size" value={(ann as any).radius} min={8} max={64}
+                onChange={(v) => { setFontSize(v); updateAnn({ radius: v, fontSize: v } as any) }} />
+            )}
+
             {/* Font size + family */}
             {(isText || isTextBox || isDimension) && (
               <>
