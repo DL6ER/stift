@@ -40,7 +40,7 @@ function defaultsForTool(tool: ToolType): ToolDefaults | null {
     case 'blur':
       return { ...base, blurSize: true }
     case 'counter':
-      return { ...base, fill: true, fontSize: true }
+      return { ...base, stroke: true, fontSize: true }
     case 'dimension':
       return { ...base, stroke: true, strokeWidth: true, fontSize: true }
     case 'stamp':
@@ -184,6 +184,8 @@ export function PropertyPanel() {
               )}
               {toolDefaults.fill && (
                 <ColorPicker label="Fill Color" value={fillColor} presets={COLOR_PRESETS}
+                  allowTransparent={activeTool === 'rectangle' || activeTool === 'ellipse'}
+                  onClear={() => setFillColor('transparent')}
                   onChange={(c) => setFillColor(c)} />
               )}
               {toolDefaults.strokeWidth && (
@@ -241,6 +243,18 @@ export function PropertyPanel() {
             {(isText || isTextBox) && (
               <ColorPicker label="Text Color" value={(ann as any).fill} presets={COLOR_PRESETS}
                 onChange={(c) => updateAnn({ fill: c } as any)} />
+            )}
+
+            {/* Shape fill color (counter, rectangle, ellipse, colorbox, highlight) */}
+            {(ann.type === 'counter' || ann.type === 'rectangle' || ann.type === 'ellipse' || ann.type === 'colorbox' || ann.type === 'highlight') && (
+              <ColorPicker
+                label={ann.type === 'counter' ? 'Color' : 'Fill Color'}
+                value={(ann as any).fill}
+                presets={COLOR_PRESETS}
+                allowTransparent={ann.type === 'rectangle' || ann.type === 'ellipse'}
+                onClear={() => updateAnn({ fill: undefined } as any)}
+                onChange={(c) => updateAnn({ fill: c } as any)}
+              />
             )}
 
             {/* Background color for textboxes */}
@@ -528,17 +542,38 @@ export function PropertyPanel() {
   )
 }
 
-function ColorPicker({ label, value, presets, onChange }: { label: string; value: string; presets: string[]; onChange: (c: string) => void }) {
+function ColorPicker({ label, value, presets, onChange, allowTransparent, onClear }: {
+  label: string
+  value: string | undefined
+  presets: string[]
+  onChange: (c: string) => void
+  allowTransparent?: boolean
+  onClear?: () => void
+}) {
+  const isNoFill = allowTransparent && (!value || value === 'transparent')
   return (
     <div>
       <label className="block text-xs text-gray-400 mb-1">{label}</label>
       <div className="flex flex-wrap gap-1 mb-1.5">
+        {allowTransparent && (
+          <button
+            title="No fill"
+            onClick={onClear}
+            className="rounded-full hover:scale-110 transition-transform"
+            style={{
+              width: 18, height: 18,
+              background: 'linear-gradient(to bottom right, #fff 0%, #fff calc(50% - 1px), #e74c3c calc(50% - 1px), #e74c3c calc(50% + 1px), #fff calc(50% + 1px), #fff 100%)',
+              outline: isNoFill ? '2px solid white' : '1px solid #4b5563',
+              outlineOffset: isNoFill ? '1px' : '0',
+            }}
+          />
+        )}
         {presets.map((c) => (
-          <button key={c} className="w-4.5 h-4.5 rounded-full border border-gray-600 hover:scale-110 transition-transform"
+          <button key={c} className="rounded-full border border-gray-600 hover:scale-110 transition-transform"
             style={{ backgroundColor: c, width: 18, height: 18 }} onClick={() => onChange(c)} />
         ))}
       </div>
-      <input type="color" value={value} onChange={(e) => onChange(e.target.value)}
+      <input type="color" value={value || '#ffffff'} onChange={(e) => onChange(e.target.value)}
         className="w-full h-7 rounded cursor-pointer bg-transparent" />
     </div>
   )
