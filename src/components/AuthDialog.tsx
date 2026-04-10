@@ -74,16 +74,32 @@ export function AuthDialog({ onClose, onSuccess, inviteToken }: Props) {
         <div className="flex items-center justify-between px-6 pt-5 pb-3">
           <div className="flex items-center gap-2">
             <Shield size={20} className="text-emerald-400" />
-            <h2 className="text-lg font-semibold text-gray-200">{effectiveMode === 'login' ? 'Sign In' : 'Create Account'}</h2>
+            <h2 className="text-lg font-semibold text-gray-200">{inviteToken ? 'Redeem Invitation' : effectiveMode === 'login' ? 'Sign In' : 'Create Account'}</h2>
           </div>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-300"><X size={18} /></button>
         </div>
 
         <form onSubmit={handleSubmit} className="px-6 pb-6 space-y-4">
           {inviteToken && (
-            <div className="bg-indigo-950/30 border border-indigo-800/40 rounded-lg p-3 text-xs text-indigo-300">
-              You're creating an account with an invitation. Pick any username and a password you can remember; your encryption key is derived from both.
-            </div>
+            <>
+              <div className="flex justify-center">
+                <div className="inline-flex bg-surface-overlay border border-border rounded-md p-0.5 text-xs">
+                  <button type="button" onClick={() => setMode('register')}
+                    className={`px-3 py-1.5 rounded transition-colors ${effectiveMode === 'register' ? 'bg-accent text-white' : 'text-gray-400 hover:text-white'}`}>
+                    New account
+                  </button>
+                  <button type="button" onClick={() => setMode('login')}
+                    className={`px-3 py-1.5 rounded transition-colors ${effectiveMode === 'login' ? 'bg-accent text-white' : 'text-gray-400 hover:text-white'}`}>
+                    Existing account
+                  </button>
+                </div>
+              </div>
+              <div className="bg-indigo-950/30 border border-indigo-800/40 rounded-lg p-3 text-xs text-indigo-300">
+                {effectiveMode === 'register'
+                  ? 'Create a new Stift account with this invitation. Pick any username and a strong password; your encryption key is derived from both.'
+                  : 'Already have a Stift account? Sign in to apply this invitation to your existing account and upgrade your storage quota.'}
+              </div>
+            </>
           )}
           <div className="bg-emerald-950/30 border border-emerald-800/40 rounded-lg p-3 text-xs text-emerald-400/80">
             <div className="flex gap-2">
@@ -142,18 +158,10 @@ export function AuthDialog({ onClose, onSuccess, inviteToken }: Props) {
 
           <button type="submit" disabled={loading}
             className="w-full py-2 bg-accent hover:bg-accent-hover text-white rounded-md font-medium text-sm disabled:opacity-50">
-            {loading ? 'Please wait...' : effectiveMode === 'login' ? (inviteToken ? 'Sign In and Apply Invitation' : 'Sign In') : 'Create Account'}
+            {loading ? 'Please wait...' : effectiveMode === 'login' ? 'Sign In' : 'Create Account'}
           </button>
 
-          {inviteToken ? (
-            <p className="text-center text-xs text-gray-500">
-              {effectiveMode === 'register' ? (
-                <>Already have an account? <button type="button" onClick={() => setMode('login')} className="text-accent hover:underline">Sign in to apply this invitation</button></>
-              ) : (
-                <>New here? <button type="button" onClick={() => setMode('register')} className="text-accent hover:underline">Create a new account</button></>
-              )}
-            </p>
-          ) : registrationEnabled ? (
+          {inviteToken ? null : registrationEnabled ? (
             <p className="text-center text-xs text-gray-500">
               {effectiveMode === 'login' ? (
                 <>No account? <button type="button" onClick={() => setMode('register')} className="text-accent hover:underline">Create one</button></>
