@@ -132,11 +132,11 @@ function TextBoxLabel({
     measure()
   }, [ann.text, ann.fontSize, ann.fontFamily, ann.bold, ann.italic, ann.padding, measure])
 
-  // Box = raw text size + uniform padding on all sides
+  // Box = raw text size + uniform padding on all sides, but respect drawn width/height as minimum
   const rawW = textSize?.w ?? (ann.text.split('\n').reduce((max, line) => Math.max(max, line.length), 0)) * ann.fontSize * 0.7
   const rawH = textSize?.h ?? ann.text.split('\n').length * ann.fontSize * 1.4
-  const boxW = rawW + pad * 2
-  const boxH = rawH + pad * 2
+  const boxW = Math.max(rawW + pad * 2, ann.width)
+  const boxH = Math.max(rawH + pad * 2, ann.height)
 
   return (
     <Group key={ann.id} {...common}>
