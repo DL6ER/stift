@@ -234,6 +234,12 @@ export function AnnotationRenderer({ stageRef }: Props) {
       patch.x = x - Math.round((ann as any).radiusX * scaleX)
       patch.y = y - Math.round((ann as any).radiusY * scaleY)
     }
+    if (ann.type === 'counter') {
+      const scale = (scaleX + scaleY) / 2
+      const newRadius = Math.max(8, Math.round((ann as any).radius * scale))
+      ;(patch as any).radius = newRadius
+      ;(patch as any).fontSize = newRadius
+    }
 
     node.scaleX(1)
     node.scaleY(1)

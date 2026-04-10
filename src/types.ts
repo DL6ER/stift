@@ -269,7 +269,7 @@ export const DEFAULT_FONT_FAMILY = 'sans-serif'
 export const DEFAULT_BLUR_PIXEL_SIZE = 10
 export const DEFAULT_COUNTER_RADIUS = 18
 export const DEFAULT_CORNER_RADIUS = 6
-export const DEFAULT_HIGHLIGHT_COLOR = 'rgba(255, 255, 0, 0.35)'
+export const DEFAULT_HIGHLIGHT_COLOR = '#ffff00'
 
 export const FONT_OPTIONS = [
   { label: 'Sans-serif', value: 'sans-serif' },

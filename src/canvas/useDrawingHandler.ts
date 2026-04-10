@@ -15,7 +15,7 @@ import {
   Annotation, ArrowAnnotation, TextAnnotation, TextBoxAnnotation, HighlightAnnotation,
   BlurAnnotation, RectangleAnnotation, EllipseAnnotation, LineAnnotation,
   DrawAnnotation, ColorBoxAnnotation, CounterAnnotation, DimensionAnnotation, StampAnnotation, STAMP_PRESETS,
-  DEFAULT_HIGHLIGHT_COLOR, DEFAULT_COUNTER_RADIUS, DEFAULT_CORNER_RADIUS,
+  DEFAULT_COUNTER_RADIUS, DEFAULT_CORNER_RADIUS, DEFAULT_HIGHLIGHT_COLOR,
 } from '../types'
 
 function getStagePointerPos(stage: Konva.Stage, stagePos: { x: number; y: number }, zoom: number) {
@@ -82,7 +82,7 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
           annotation = {
             id, type: 'arrow', x: 0, y: 0,
             points: [pos.x, pos.y, pos.x, pos.y],
-            stroke: strokeColor, strokeWidth, headSize: strokeWidth * 3,
+            stroke: strokeColor, strokeWidth, headSize: strokeWidth * 3, opacity,
           } as ArrowAnnotation
           break
 
@@ -90,7 +90,7 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
           annotation = {
             id, type: 'text', x: pos.x, y: pos.y,
             text: '', fontSize, fontFamily, fill: strokeColor,
-            backgroundColor: 'rgba(255,255,255,0.85)', padding: 6,
+            backgroundColor: 'rgba(255,255,255,0.85)', padding: 6, opacity,
           } as TextAnnotation
           setIsDrawing(false)
           drawingIdRef.current = null
@@ -108,21 +108,22 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
             width: 0, height: 0, text: '', fontSize, fontFamily,
             fill: strokeColor, backgroundColor: fillColor,
             borderColor: strokeColor, borderWidth: 2, borderRadius: DEFAULT_CORNER_RADIUS,
-            padding: 10, textAlign: 'left',
+            padding: 10, textAlign: 'left', opacity,
           } as TextBoxAnnotation
           break
 
         case 'highlight':
           annotation = {
             id, type: 'highlight', x: pos.x, y: pos.y,
-            width: 0, height: 0, fill: DEFAULT_HIGHLIGHT_COLOR, opacity: 0.35,
+            width: 0, height: 0, fill: (!fillColor || fillColor === 'transparent') ? DEFAULT_HIGHLIGHT_COLOR : fillColor,
+            opacity: opacity !== 1 ? opacity : 0.35,
           } as HighlightAnnotation
           break
 
         case 'blur':
           annotation = {
             id, type: 'blur', x: pos.x, y: pos.y,
-            width: 0, height: 0, pixelSize: blurPixelSize,
+            width: 0, height: 0, pixelSize: blurPixelSize, opacity,
           } as BlurAnnotation
           break
 
@@ -130,6 +131,7 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
           annotation = {
             id, type: 'rectangle', x: pos.x, y: pos.y,
             width: 0, height: 0, stroke: strokeColor, strokeWidth, cornerRadius: DEFAULT_CORNER_RADIUS,
+            fill: fillColor === 'transparent' ? undefined : fillColor, opacity,
           } as RectangleAnnotation
           break
 
@@ -137,6 +139,7 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
           annotation = {
             id, type: 'ellipse', x: pos.x, y: pos.y,
             radiusX: 0, radiusY: 0, stroke: strokeColor, strokeWidth,
+            fill: fillColor === 'transparent' ? undefined : fillColor, opacity,
           } as EllipseAnnotation
           break
 
@@ -144,7 +147,7 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
           annotation = {
             id, type: 'line', x: 0, y: 0,
             points: [pos.x, pos.y, pos.x, pos.y],
-            stroke: strokeColor, strokeWidth,
+            stroke: strokeColor, strokeWidth, opacity,
           } as LineAnnotation
           break
 
@@ -152,14 +155,14 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
           annotation = {
             id, type: 'draw', x: 0, y: 0,
             points: [pos.x, pos.y],
-            stroke: strokeColor, strokeWidth,
+            stroke: strokeColor, strokeWidth, opacity,
           } as DrawAnnotation
           break
 
         case 'colorbox':
           annotation = {
             id, type: 'colorbox', x: pos.x, y: pos.y,
-            width: 0, height: 0, fill: fillColor,
+            width: 0, height: 0, fill: (!fillColor || fillColor === 'transparent') ? strokeColor : fillColor, opacity,
           } as ColorBoxAnnotation
           break
 
@@ -168,7 +171,7 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
           annotation = {
             id, type: 'counter', x: pos.x, y: pos.y,
             number: num, fill: strokeColor, textColor: '#ffffff',
-            radius: DEFAULT_COUNTER_RADIUS, fontSize: DEFAULT_COUNTER_RADIUS,
+            radius: fontSize, fontSize, opacity,
           } as CounterAnnotation
           break
         }
@@ -177,7 +180,7 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
           annotation = {
             id, type: 'stamp', x: pos.x, y: pos.y,
             text: STAMP_PRESETS[0], fontSize: 24,
-            fill: '#e74c3c', borderColor: '#e74c3c',
+            fill: '#e74c3c', borderColor: '#e74c3c', opacity,
           } as StampAnnotation
           setIsDrawing(false)
           drawingIdRef.current = null
@@ -193,8 +196,8 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
           annotation = {
             id, type: 'dimension', x: 0, y: 0,
             points: [pos.x, pos.y, pos.x, pos.y],
-            stroke: strokeColor, strokeWidth: 1.5, fontSize: 12,
-            label: '', unit, pixelsPerUnit: ppu, capSize: 8,
+            stroke: strokeColor, strokeWidth: 1.5, fontSize,
+            label: '', unit, pixelsPerUnit: ppu, capSize: 8, opacity,
           } as DimensionAnnotation
           break
         }
