@@ -42,7 +42,7 @@ export function StatusBar() {
 
   const handleFitCanvas = () => {
     const store = useProjectStore.getState()
-    const PADDING = 40
+    const PADDING = 0
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
 
     for (const img of store.images) {

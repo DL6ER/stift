@@ -33,7 +33,7 @@ Stift focuses on the essential tools you need to get the job done, without the c
 - Arrows (single/double-head, solid/dashed/dotted), text labels, text boxes with auto-sizing borders
 - Highlight regions, blur/pixelate sensitive areas
 - Rectangles, ellipses, lines (solid/dashed/dotted), freehand drawing
-- Auto-incrementing numbered counters
+- Auto-incrementing numbered counters with optional tapered tails
 - Dimension/measurement lines with unit calibration
 - Stamp/watermark annotations (DRAFT, APPROVED, REJECTED, or custom text)
 - Color boxes for redaction
