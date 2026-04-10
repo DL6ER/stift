@@ -18,6 +18,22 @@ import {
   DEFAULT_COUNTER_RADIUS, DEFAULT_CORNER_RADIUS, DEFAULT_HIGHLIGHT_COLOR,
 } from '../types'
 
+// Snap a point to the nearest 15-degree angle relative to an origin.
+// Used when Shift is held during line/arrow/dimension drawing.
+function snapAngle(origin: { x: number; y: number }, pos: { x: number; y: number }): { x: number; y: number } {
+  const dx = pos.x - origin.x
+  const dy = pos.y - origin.y
+  const dist = Math.sqrt(dx * dx + dy * dy)
+  if (dist < 1) return pos
+  const angle = Math.atan2(dy, dx)
+  const step = Math.PI / 12 // 15 degrees
+  const snapped = Math.round(angle / step) * step
+  return {
+    x: origin.x + Math.cos(snapped) * dist,
+    y: origin.y + Math.sin(snapped) * dist,
+  }
+}
+
 function getStagePointerPos(stage: Konva.Stage, stagePos: { x: number; y: number }, zoom: number) {
   const pointer = stage.getPointerPosition()
   if (!pointer) return null
@@ -225,12 +241,18 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
       const start = startPosRef.current
       const id = drawingIdRef.current
 
+      // Shift constrains line-based tools to 15-degree angle increments
+      const shift = e.evt?.shiftKey
+      const endPos = (shift && (activeTool === 'arrow' || activeTool === 'line' || activeTool === 'dimension'))
+        ? snapAngle(start, pos)
+        : pos
+
       switch (activeTool) {
         case 'arrow':
-          updateAnnotation(id, { points: [start.x, start.y, pos.x, pos.y] })
+          updateAnnotation(id, { points: [start.x, start.y, endPos.x, endPos.y] })
           break
         case 'line':
-          updateAnnotation(id, { points: [start.x, start.y, pos.x, pos.y] })
+          updateAnnotation(id, { points: [start.x, start.y, endPos.x, endPos.y] })
           break
         case 'draw':
           // Append point to the draw annotation
@@ -245,26 +267,32 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
         case 'rectangle':
         case 'colorbox':
         case 'textbox': {
-          const x = Math.min(start.x, pos.x)
-          const y = Math.min(start.y, pos.y)
-          const width = Math.abs(pos.x - start.x)
-          const height = Math.abs(pos.y - start.y)
+          let width = Math.abs(pos.x - start.x)
+          let height = Math.abs(pos.y - start.y)
+          // Shift constrains to a square
+          if (shift) { const side = Math.max(width, height); width = side; height = side }
+          const x = pos.x >= start.x ? start.x : start.x - width
+          const y = pos.y >= start.y ? start.y : start.y - height
           updateAnnotation(id, { x, y, width, height })
           break
         }
         case 'ellipse': {
-          const rx = Math.abs(pos.x - start.x) / 2
-          const ry = Math.abs(pos.y - start.y) / 2
-          const cx = Math.min(start.x, pos.x)
-          const cy = Math.min(start.y, pos.y)
+          let rx = Math.abs(pos.x - start.x) / 2
+          let ry = Math.abs(pos.y - start.y) / 2
+          // Shift constrains to a circle
+          if (shift) { const r = Math.max(rx, ry); rx = r; ry = r }
+          const cx = pos.x >= start.x ? start.x : start.x - rx * 2
+          const cy = pos.y >= start.y ? start.y : start.y - ry * 2
           updateAnnotation(id, { x: cx, y: cy, radiusX: rx, radiusY: ry })
           break
         }
-        case 'counter':
-          updateAnnotation(id, { tailX: pos.x - start.x, tailY: pos.y - start.y })
+        case 'counter': {
+          const tailEnd = shift ? snapAngle(start, pos) : pos
+          updateAnnotation(id, { tailX: tailEnd.x - start.x, tailY: tailEnd.y - start.y })
           break
+        }
         case 'dimension':
-          updateAnnotation(id, { points: [start.x, start.y, pos.x, pos.y] })
+          updateAnnotation(id, { points: [start.x, start.y, endPos.x, endPos.y] })
           break
       }
     },
