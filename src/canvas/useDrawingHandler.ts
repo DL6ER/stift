@@ -212,7 +212,7 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
 
   const onMouseMove = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
-      if (!isDrawing || !drawingIdRef.current || !startPosRef.current) return
+      if (!drawingIdRef.current || !startPosRef.current) return
 
       const stage = stageRef.current
       if (!stage) return
@@ -264,11 +264,11 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
           break
       }
     },
-    [isDrawing, activeTool, zoom, stagePos, stageRef, updateAnnotation],
+    [activeTool, zoom, stagePos, stageRef, updateAnnotation],
   )
 
   const onMouseUp = useCallback(() => {
-    if (!isDrawing || !drawingIdRef.current) return
+    if (!drawingIdRef.current) return
     const id = drawingIdRef.current
 
     // After drawing a dimension line, set default label based on pixel length and calibration
@@ -306,7 +306,7 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
     setIsDrawing(false)
     drawingIdRef.current = null
     startPosRef.current = null
-  }, [isDrawing, activeTool, setIsDrawing])
+  }, [activeTool, setIsDrawing])
 
   return { onMouseDown, onMouseMove, onMouseUp }
 }
