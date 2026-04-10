@@ -74,6 +74,8 @@ export function PropertyPanel() {
   const updateAnnotation = useProjectStore((s) => s.updateAnnotation)
   const updateImage = useProjectStore((s) => s.updateImage)
   const pushHistory = useProjectStore((s) => s.pushHistory)
+  const nextCounter = useProjectStore((s) => s.nextCounter)
+  const setNextCounter = useProjectStore((s) => s.setNextCounter)
 
   const propertyPanelPinned = useEditorStore((s) => s.propertyPanelPinned)
   const togglePropertyPanelPinned = useEditorStore((s) => s.togglePropertyPanelPinned)
@@ -200,6 +202,22 @@ export function PropertyPanel() {
               {toolDefaults.opacity && (
                 <SliderInput label="Opacity" value={Math.round(opacity * 100)} min={0} max={100} suffix="%" onChange={(v) => setOpacity(v / 100)} />
               )}
+              {activeTool === 'counter' && (
+                <>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-0.5">Next number</label>
+                    <input
+                      type="number" min={1} value={nextCounter}
+                      onChange={(e) => setNextCounter(parseInt(e.target.value) || 1)}
+                      className="w-full bg-surface-overlay border border-border rounded px-2 py-1 text-xs text-gray-300 outline-none"
+                    />
+                  </div>
+                  <button onClick={() => setNextCounter(1)}
+                    className="w-full text-xs bg-surface-overlay border border-border rounded px-2 py-1 text-gray-300 hover:bg-surface-overlay/80">
+                    Reset to 1
+                  </button>
+                </>
+              )}
             </>
           ) : (
             <p className="text-[11px] text-gray-500 leading-relaxed">
@@ -232,6 +250,18 @@ export function PropertyPanel() {
         {ann && (
           <>
             <p className="text-[10px] text-gray-500 uppercase tracking-wider">{ann.type}</p>
+
+            {/* Counter number */}
+            {ann.type === 'counter' && (
+              <div>
+                <label className="block text-xs text-gray-400 mb-0.5">Number</label>
+                <input
+                  type="number" min={1} value={(ann as any).number}
+                  onChange={(e) => updateAnn({ number: Math.max(1, parseInt(e.target.value) || 1) } as any)}
+                  className="w-full bg-surface-overlay border border-border rounded px-2 py-1 text-xs text-gray-300 outline-none"
+                />
+              </div>
+            )}
 
             {/* Stroke color (arrows, rects, ellipses, lines, textbox border) */}
             {hasStroke && (

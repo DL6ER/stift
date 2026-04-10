@@ -73,6 +73,7 @@ interface ProjectState {
 
   // Counter
   getNextCounter: () => number
+  setNextCounter: (n: number) => void
   renumberCounters: () => void
 
   // History
@@ -246,6 +247,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ nextCounter: n + 1 })
     return n
   },
+  setNextCounter: (n: number) => set({ nextCounter: Math.max(1, n) }),
   renumberCounters: () =>
     set((s) => {
       const counters = s.annotations
