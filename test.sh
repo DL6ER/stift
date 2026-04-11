@@ -48,15 +48,14 @@ ci_start() {
     -p 8090:8080 \
     -v "$DIR/data:/data" \
     stift-ci > /dev/null
-  # Wait for health
-  for i in $(seq 1 30); do
+  for i in $(seq 1 60); do
     if docker exec stift-ci wget -q --spider http://127.0.0.1:8080/api/config 2>/dev/null; then
       echo "Stift is ready."
       return 0
     fi
-    sleep 2
+    sleep 0.5
   done
-  echo "Timed out waiting for Stift." >&2
+  echo "Timed out waiting for Stift (30s)." >&2
   docker logs stift-ci 2>&1 | tail -10 >&2
   ci_stop
   exit 1

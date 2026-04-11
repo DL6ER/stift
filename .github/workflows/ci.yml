@@ -68,18 +68,24 @@ jobs:
 
       - name: Start Stift container
         run: |
+          mkdir -p ${{ github.workspace }}/data
+          chmod 777 ${{ github.workspace }}/data
           docker run -d --name stift-ci \
             -p 8080:8080 \
             -v ${{ github.workspace }}/data:/data \
             stift-ci
-          # Wait for the health check to pass
-          for i in $(seq 1 30); do
-            if docker exec stift-ci wget -q --spider http://127.0.0.1:8080/api/config 2>/dev/null; then
+          # Probe from the host (same network path Playwright will use)
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8080/api/config > /dev/null 2>&1; then
               echo "Stift is ready"
               break
             fi
-            echo "Waiting for Stift... ($i/30)"
-            sleep 2
+            if [ "$i" -eq 60 ]; then
+              echo "Timed out waiting for Stift"
+              docker logs stift-ci 2>&1 | tail -20
+              exit 1
+            fi
+            sleep 0.5
           done
 
       - name: Run visual regression tests
