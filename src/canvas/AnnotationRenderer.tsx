@@ -7,13 +7,59 @@
 
 import React, { useRef, useEffect, useCallback, useState } from 'react'
 import Konva from 'konva'
-import { Arrow, Text, Rect, Ellipse, Line, Circle, Group } from 'react-konva'
+import { Arrow, Text, Rect, Ellipse, Line, Circle, Group, Image as KonvaImage } from 'react-konva'
 import { useProjectStore } from '../stores/projectStore'
 import { useEditorStore } from '../stores/editorStore'
 import { Annotation, TextAnnotation, TextBoxAnnotation, DimensionAnnotation, StampAnnotation } from '../types'
 import { BlurRegion } from './objects/BlurRegion'
 
-import { DashStyle } from '../types'
+import { DashStyle, MagnifierAnnotation } from '../types'
+
+// Captures the source region of a magnifier annotation from the stage
+// and renders it enlarged as a Konva Image inside the magnifier display.
+// Global counter bumped by the refresh button to trigger re-capture
+let magnifierRefreshCounter = 0
+
+function MagnifierView({ ann, stageRef }: { ann: MagnifierAnnotation; stageRef: React.RefObject<Konva.Stage | null> }) {
+  const [img, setImg] = useState<HTMLImageElement | null>(null)
+  const [refresh, setRefresh] = useState(0)
+
+  // Expose a refresh trigger so the PropertyPanel button can call it
+  useEffect(() => {
+    (window as any).__refreshMagnifier = () => setRefresh(r => r + 1)
+    return () => { delete (window as any).__refreshMagnifier }
+  }, [])
+
+  useEffect(() => {
+    const stage = stageRef.current
+    if (!stage || ann.sourceWidth < 2 || ann.sourceHeight < 2) return
+    const t = setTimeout(() => {
+      try {
+        const selfNode = stage.findOne('#' + ann.id)
+        if (selfNode) selfNode.visible(false)
+        // Hide Transformer resize handles so they don't appear in the capture
+        const transformers = stage.find('Transformer')
+        transformers.forEach((tr: any) => tr.visible(false))
+        stage.batchDraw()
+        const dataURL = stage.toDataURL({
+          x: ann.sourceX, y: ann.sourceY,
+          width: ann.sourceWidth, height: ann.sourceHeight,
+          pixelRatio: ann.zoom,
+        })
+        if (selfNode) selfNode.visible(true)
+        transformers.forEach((tr: any) => tr.visible(true))
+        stage.batchDraw()
+        const image = new window.Image()
+        image.onload = () => setImg(image)
+        image.src = dataURL
+      } catch {}
+    }, 100)
+    return () => clearTimeout(t)
+  }, [ann.id, ann.sourceX, ann.sourceY, ann.sourceWidth, ann.sourceHeight, ann.zoom, stageRef, refresh])
+
+  if (!img) return null
+  return <KonvaImage image={img} x={0} y={0} width={ann.width} height={ann.height} />
+}
 
 function dashArray(style?: DashStyle, strokeWidth = 2): number[] | undefined {
   if (!style || style === 'solid') return undefined
@@ -184,16 +230,21 @@ export function AnnotationRenderer({ stageRef }: Props) {
   const handleSelect = (id: string) => (e: any) => {
     if (activeTool !== 'select') return
     e.cancelBubble = true
+    // Expand selection to include group members
+    const ann = annotations.find(a => a.id === id)
+    const groupIds = ann?.groupId
+      ? annotations.filter(a => a.groupId === ann.groupId).map(a => a.id)
+      : [id]
     if (e.evt?.shiftKey) {
-      // Shift+click: toggle in selection
       const current = useEditorStore.getState().selectedIds
-      if (current.includes(id)) {
-        setSelectedIds(current.filter((i) => i !== id))
+      const allSelected = groupIds.every(gid => current.includes(gid))
+      if (allSelected) {
+        setSelectedIds(current.filter(i => !groupIds.includes(i)))
       } else {
-        setSelectedIds([...current, id])
+        setSelectedIds([...new Set([...current, ...groupIds])])
       }
     } else {
-      setSelectedIds([id])
+      setSelectedIds(groupIds)
     }
   }
 
@@ -201,12 +252,21 @@ export function AnnotationRenderer({ stageRef }: Props) {
     pushHistory()
     let x = Math.round(e.target.x())
     let y = Math.round(e.target.y())
-    // Ellipse renders at center (ann.x + radiusX), so subtract offset to get top-left
     if (ann.type === 'ellipse') {
       x -= (ann as any).radiusX
       y -= (ann as any).radiusY
     }
+    const dx = x - ann.x
+    const dy = y - ann.y
     updateAnnotation(ann.id, { x, y })
+    // Move all group members by the same delta
+    if (ann.groupId) {
+      for (const other of annotations) {
+        if (other.groupId === ann.groupId && other.id !== ann.id) {
+          updateAnnotation(other.id, { x: other.x + dx, y: other.y + dy })
+        }
+      }
+    }
   }
 
   const handleTransformEnd = (ann: Annotation) => (e: Konva.KonvaEventObject<Event>) => {
@@ -262,14 +322,75 @@ export function AnnotationRenderer({ stageRef }: Props) {
           y: ann.y,
           rotation: ann.rotation || 0,
           opacity: ann.opacity ?? 1,
-          draggable: isDraggable,
+          draggable: isDraggable && !ann.locked,
           onClick: handleSelect(ann.id),
-          onDragEnd: handleDragEnd(ann),
-          onTransformEnd: handleTransformEnd(ann),
+          onDragEnd: ann.locked ? undefined : handleDragEnd(ann),
+          onTransformEnd: ann.locked ? undefined : handleTransformEnd(ann),
         }
 
         switch (ann.type) {
           case 'arrow':
+            if (ann.curved && ann.controlX != null && ann.controlY != null) {
+              // Quadratic bezier: approximate with line segments
+              const [x1, y1, x2, y2] = ann.points
+              const cx = ann.controlX, cy = ann.controlY
+              const steps = 20
+              const curvePoints: number[] = []
+              for (let t = 0; t <= 1; t += 1 / steps) {
+                const u = 1 - t
+                curvePoints.push(
+                  u * u * x1 + 2 * u * t * cx + t * t * x2,
+                  u * u * y1 + 2 * u * t * cy + t * t * y2,
+                )
+              }
+              // Arrowhead direction from second-to-last to last point
+              const tipAngle = Math.atan2(y2 - cy, x2 - cx)
+              const hl = ann.headSize * 1.4, hw = ann.headSize * 0.85
+              const headPoints = [
+                x2 - hl * Math.cos(tipAngle - 0.35), y2 - hl * Math.sin(tipAngle - 0.35),
+                x2, y2,
+                x2 - hl * Math.cos(tipAngle + 0.35), y2 - hl * Math.sin(tipAngle + 0.35),
+              ]
+              return (
+                <Group key={ann.id} {...common}>
+                  <Line
+                    points={curvePoints}
+                    stroke={ann.stroke}
+                    strokeWidth={ann.strokeWidth}
+                    dash={dashArray(ann.dash, ann.strokeWidth)}
+                    hitStrokeWidth={20}
+                    lineCap="round"
+                    lineJoin="round"
+                    shadowColor={SHADOW.color}
+                    shadowBlur={SHADOW.blur}
+                    shadowOffsetX={SHADOW.offsetX}
+                    shadowOffsetY={SHADOW.offsetY}
+                    shadowEnabled={SHADOW.enabled}
+                  />
+                  <Line points={headPoints} stroke={ann.stroke} strokeWidth={ann.strokeWidth} fill={ann.stroke} closed lineCap="round" />
+                  {ann.doubleHead && (() => {
+                    const tailAngle = Math.atan2(y1 - cy, x1 - cx)
+                    return <Line points={[
+                      x1 - hl * Math.cos(tailAngle - 0.35), y1 - hl * Math.sin(tailAngle - 0.35),
+                      x1, y1,
+                      x1 - hl * Math.cos(tailAngle + 0.35), y1 - hl * Math.sin(tailAngle + 0.35),
+                    ]} stroke={ann.stroke} strokeWidth={ann.strokeWidth} fill={ann.stroke} closed lineCap="round" />
+                  })()}
+                  {/* Draggable control point */}
+                  {isDraggable && !ann.locked && (
+                    <Circle
+                      x={cx} y={cy} radius={6}
+                      fill="rgba(99,102,241,0.6)" stroke="#6366f1" strokeWidth={1}
+                      draggable
+                      onDragMove={(e) => {
+                        updateAnnotation(ann.id, { controlX: e.target.x(), controlY: e.target.y() })
+                      }}
+                      onDragEnd={() => pushHistory()}
+                    />
+                  )}
+                </Group>
+              )
+            }
             return (
               <Arrow
                 key={ann.id}
@@ -549,6 +670,64 @@ export function AnnotationRenderer({ stageRef }: Props) {
                   fill={st.fill}
                   letterSpacing={st.fontSize * 0.15}
                 />
+              </Group>
+            )
+          }
+
+          case 'magnifier': {
+            const mag = ann as import('../types').MagnifierAnnotation
+            if (mag.sourceWidth < 2 || mag.sourceHeight < 2) return null
+            // Compute connecting line endpoints based on relative position
+            // of target to source so the line always exits the nearest edge.
+            const srcRelX = mag.sourceX - mag.x
+            const srcRelY = mag.sourceY - mag.y
+            const srcCX = srcRelX + mag.sourceWidth / 2
+            const srcCY = srcRelY + mag.sourceHeight / 2
+            const tgtCX = mag.width / 2
+            const tgtCY = mag.height / 2
+            const dx = tgtCX - srcCX
+            const dy = tgtCY - srcCY
+            let linePts: number[]
+            if (Math.abs(dx) >= Math.abs(dy)) {
+              // Horizontal: connect left/right edges
+              if (dx >= 0) {
+                linePts = [srcRelX + mag.sourceWidth, srcCY, 0, tgtCY]
+              } else {
+                linePts = [srcRelX, srcCY, mag.width, tgtCY]
+              }
+            } else {
+              // Vertical: connect top/bottom edges
+              if (dy >= 0) {
+                linePts = [srcCX, srcRelY + mag.sourceHeight, tgtCX, 0]
+              } else {
+                linePts = [srcCX, srcRelY, tgtCX, mag.height]
+              }
+            }
+            return (
+              <Group key={ann.id} {...common}>
+                {/* Source region outline */}
+                <Rect
+                  x={srcRelX} y={srcRelY}
+                  width={mag.sourceWidth} height={mag.sourceHeight}
+                  stroke={mag.borderColor} strokeWidth={mag.borderWidth}
+                  dash={dashArray(mag.dash, mag.borderWidth)}
+                />
+                {/* Connecting line -- docks to nearest edge pair */}
+                <Line
+                  points={linePts}
+                  stroke={mag.borderColor} strokeWidth={mag.borderWidth}
+                  dash={dashArray(mag.dash, mag.borderWidth)}
+                />
+                {/* Enlarged display: image first, border on top */}
+                <Group>
+                  <Rect width={mag.width} height={mag.height} fill="#1e1e2e" />
+                  <MagnifierView ann={mag} stageRef={stageRef} />
+                  <Rect
+                    width={mag.width} height={mag.height}
+                    stroke={mag.borderColor} strokeWidth={mag.borderWidth}
+                    dash={dashArray(mag.dash, mag.borderWidth)}
+                  />
+                </Group>
               </Group>
             )
           }
