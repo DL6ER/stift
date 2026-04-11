@@ -50,7 +50,10 @@ async function statusText(page) {
   return await page.textContent('body')
 }
 
-const browser = await chromium.launch({ headless: true })
+const browser = await chromium.launch({
+  headless: true,
+  args: ['--disable-gpu', '--font-render-hinting=none', '--disable-lcd-text', '--disable-font-subpixel-positioning'],
+})
 
 // ===========================================
 // ONBOARDING & NAVIGATION
