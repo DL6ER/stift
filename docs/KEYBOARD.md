@@ -21,6 +21,8 @@ Press `?` inside the app for an in-context reference panel.
 | `M` | Dimension / Measure |
 | `W` | Stamp / Watermark |
 | `K` | Connector |
+| `I` | Eyedropper (pick color) |
+| `Z` | Magnifier (zoom inset) |
 
 ## Editing
 

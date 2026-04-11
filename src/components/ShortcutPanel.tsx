@@ -6,7 +6,7 @@ const SHORTCUTS = [
     ['V', 'Select / Move'], ['A', 'Arrow'], ['T', 'Text'], ['G', 'Text Box'],
     ['H', 'Highlight'], ['B', 'Blur'], ['R', 'Rectangle'], ['E', 'Ellipse'],
     ['L', 'Line'], ['D', 'Freehand Draw'], ['X', 'Color Box'], ['N', 'Counter'],
-    ['M', 'Dimension'], ['K', 'Connector'],
+    ['M', 'Dimension'], ['K', 'Connector'], ['I', 'Eyedropper'], ['Z', 'Magnifier'],
   ]],
   ['Actions', [
     ['Ctrl+Z', 'Undo'], ['Ctrl+Y', 'Redo'], ['Ctrl+C', 'Copy'], ['Ctrl+V', 'Paste'],
