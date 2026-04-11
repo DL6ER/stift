@@ -6,7 +6,7 @@
 import {
   MousePointer2, MoveRight, Type, Highlighter, Grid3x3,
   Square, Circle, Minus, Pencil, PaintBucket, Hash,
-  Link, TextCursorInput, Ruler, Stamp,
+  Link, TextCursorInput, Ruler, Stamp, Pipette, Search,
 } from 'lucide-react'
 import { useEditorStore } from '../stores/editorStore'
 import { ToolType } from '../types'
@@ -27,6 +27,8 @@ const tools: { id: ToolType; icon: React.ElementType; label: string; shortcut: s
   { id: 'dimension', icon: Ruler, label: 'Dimension / Measure', shortcut: 'M' },
   { id: 'stamp', icon: Stamp, label: 'Stamp / Watermark', shortcut: 'W' },
   { id: 'connector', icon: Link, label: 'Connector', shortcut: 'K' },
+  { id: 'eyedropper', icon: Pipette, label: 'Eyedropper (pick color)', shortcut: 'I' },
+  { id: 'magnifier', icon: Search, label: 'Magnifier (zoom inset)', shortcut: 'Z' },
 ]
 
 export function Toolbar() {

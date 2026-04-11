@@ -37,6 +37,8 @@ const TOOL_SHORTCUTS: Record<string, ToolType> = {
   m: 'dimension',
   w: 'stamp',
   k: 'connector',
+  i: 'eyedropper',
+  z: 'magnifier',
 }
 
 export default function App() {
@@ -169,6 +171,19 @@ export default function App() {
               store.addAnnotation({ ...ann, id: crypto.randomUUID(), x: ann.x + 20, y: ann.y + 20 })
             }
           }
+        }
+        return
+      }
+
+      // Ctrl+G -- group selected, Ctrl+Shift+G -- ungroup
+      if ((e.ctrlKey || e.metaKey) && e.key === 'g') {
+        e.preventDefault()
+        if (selectedIds.length > 1 && !e.shiftKey) {
+          pushHistory()
+          useProjectStore.getState().groupAnnotations(selectedIds)
+        } else if (e.shiftKey && selectedIds.length > 0) {
+          pushHistory()
+          useProjectStore.getState().ungroupAnnotations(selectedIds)
         }
         return
       }

@@ -14,7 +14,7 @@ import { useProjectStore } from '../stores/projectStore'
 import {
   Annotation, ArrowAnnotation, TextAnnotation, TextBoxAnnotation, HighlightAnnotation,
   BlurAnnotation, RectangleAnnotation, EllipseAnnotation, LineAnnotation,
-  DrawAnnotation, ColorBoxAnnotation, CounterAnnotation, DimensionAnnotation, StampAnnotation, STAMP_PRESETS,
+  DrawAnnotation, ColorBoxAnnotation, CounterAnnotation, DimensionAnnotation, StampAnnotation, MagnifierAnnotation, STAMP_PRESETS,
   DEFAULT_COUNTER_RADIUS, DEFAULT_CORNER_RADIUS, DEFAULT_HIGHLIGHT_COLOR,
 } from '../types'
 
@@ -71,7 +71,7 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
 
   const onMouseDown = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
-      if (activeTool === 'select') return
+      if (activeTool === 'select' || activeTool === 'eyedropper') return
       // Allow drawing on canvas background and on images, but not on annotations
       const target = e.target
       const isStage = target === target.getStage()
@@ -203,6 +203,16 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
           break
         }
 
+        case 'magnifier':
+          annotation = {
+            id, type: 'magnifier', x: pos.x, y: pos.y,
+            sourceX: pos.x, sourceY: pos.y,
+            sourceWidth: 0, sourceHeight: 0,
+            width: 0, height: 0, zoom: 2,
+            borderColor: strokeColor, borderWidth: 2, opacity,
+          } as MagnifierAnnotation
+          break
+
         case 'dimension': {
           // Check for calibration from previous dimension lines
           const dims = useProjectStore.getState().annotations.filter((a) => a.type === 'dimension') as DimensionAnnotation[]
@@ -284,6 +294,20 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
           const cx = pos.x >= start.x ? start.x : start.x - rx * 2
           const cy = pos.y >= start.y ? start.y : start.y - ry * 2
           updateAnnotation(id, { x: cx, y: cy, radiusX: rx, radiusY: ry })
+          break
+        }
+        case 'magnifier': {
+          let sw = Math.abs(pos.x - start.x)
+          let sh = Math.abs(pos.y - start.y)
+          if (shift) { const side = Math.max(sw, sh); sw = side; sh = side }
+          const sx = pos.x >= start.x ? start.x : start.x - sw
+          const sy = pos.y >= start.y ? start.y : start.y - sh
+          const z = 2
+          updateAnnotation(id, {
+            sourceX: sx, sourceY: sy, sourceWidth: sw, sourceHeight: sh,
+            x: sx + sw + 20, y: sy,
+            width: sw * z, height: sh * z, zoom: z,
+          })
           break
         }
         case 'counter': {
