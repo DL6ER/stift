@@ -51,6 +51,7 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
   const strokeColor = useEditorStore((s) => s.strokeColor)
   const fillColor = useEditorStore((s) => s.fillColor)
   const strokeWidth = useEditorStore((s) => s.strokeWidth)
+  const setStrokeWidth = useEditorStore((s) => s.setStrokeWidth)
   const fontSize = useEditorStore((s) => s.fontSize)
   const fontFamily = useEditorStore((s) => s.fontFamily)
   const blurPixelSize = useEditorStore((s) => s.blurPixelSize)
@@ -375,5 +376,19 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
     startPosRef.current = null
   }, [activeTool, setIsDrawing])
 
-  return { onMouseDown, onMouseMove, onMouseUp }
+  const onWheelDuringDraw = useCallback(
+    (deltaY: number): boolean => {
+      if (!drawingIdRef.current) return false
+      if (!['arrow', 'rectangle', 'ellipse', 'line', 'draw', 'dimension'].includes(activeTool)) return false
+
+      const direction = deltaY > 0 ? -1 : 1
+      const newWidth = Math.max(1, Math.min(20, strokeWidth + direction))
+      setStrokeWidth(newWidth)
+      updateAnnotation(drawingIdRef.current, { strokeWidth: newWidth })
+      return true
+    },
+    [activeTool, strokeWidth, setStrokeWidth, updateAnnotation],
+  )
+
+  return { onMouseDown, onMouseMove, onMouseUp, onWheelDuringDraw }
 }
