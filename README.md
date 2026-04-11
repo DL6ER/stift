@@ -28,7 +28,7 @@ Stift focuses on the essential tools you need to get the job done, without the c
 
 ## Key Features
 
-**Annotation tools** (14 tools, each with a single-key shortcut):
+**Annotation tools** (16 tools, each with a single-key shortcut):
 
 - Arrows (single/double-head, solid/dashed/dotted), text labels, text boxes with auto-sizing borders
 - Highlight regions, blur/pixelate sensitive areas
@@ -38,6 +38,8 @@ Stift focuses on the essential tools you need to get the job done, without the c
 - Stamp/watermark annotations (DRAFT, APPROVED, REJECTED, or custom text)
 - Color boxes for redaction
 - Connectors linking overview regions to detail images
+- Eyedropper (pick any color from the canvas)
+- Magnifier (draw a source region, get an enlarged inset with connecting line)
 - Font selection (sans-serif, serif, monospace, Arial, Georgia)
 
 **Professional output:**
@@ -58,6 +60,9 @@ Stift focuses on the essential tools you need to get the job done, without the c
 - Space+drag to pan, scroll to zoom, zoom-to-fit, pinch-to-zoom (touch)
 - Snap-to-grid, canvas size control, background color (white/dark/transparent)
 - Multi-select (Shift+click), Ctrl+A, arrow key nudge (1px / Shift+10px)
+- Group/ungroup annotations (Ctrl+G / Ctrl+Shift+G), lock annotation position
+- Shift-constrain: 15-degree angle snap for lines, square/circle for shapes, proportional resize
+- Curved bezier arrows with draggable control point
 - Copy/paste (Ctrl+C/V), duplicate (Ctrl+D), layer ordering (]/[)
 - Right-click context menu with alignment tools (align edges, distribute, center)
 - Undo/redo (Ctrl+Z/Y), inline text editing (double-click)
