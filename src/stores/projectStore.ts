@@ -71,6 +71,11 @@ interface ProjectState {
   updateConnector: (id: string, patch: Partial<Connector>) => void
   removeConnector: (id: string) => void
 
+  // Grouping
+  groupAnnotations: (ids: string[]) => void
+  ungroupAnnotations: (ids: string[]) => void
+  getGroupMembers: (groupId: string) => string[]
+
   // Counter
   getNextCounter: () => number
   setNextCounter: (n: number) => void
@@ -248,6 +253,19 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     return n
   },
   setNextCounter: (n: number) => set({ nextCounter: Math.max(1, n) }),
+
+  groupAnnotations: (ids: string[]) => set((s) => {
+    if (ids.length < 2) return s
+    const gid = uuid()
+    return { annotations: s.annotations.map(a => ids.includes(a.id) ? { ...a, groupId: gid } : a) }
+  }),
+  ungroupAnnotations: (ids: string[]) => set((s) => {
+    return { annotations: s.annotations.map(a => ids.includes(a.id) ? { ...a, groupId: undefined } : a) }
+  }),
+  getGroupMembers: (groupId: string) => {
+    return get().annotations.filter(a => a.groupId === groupId).map(a => a.id)
+  },
+
   renumberCounters: () =>
     set((s) => {
       const counters = s.annotations

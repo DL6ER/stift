@@ -23,6 +23,8 @@ export type ToolType =
   | 'dimension'
   | 'stamp'
   | 'connector'
+  | 'eyedropper'
+  | 'magnifier'
 
 export interface Point {
   x: number
@@ -38,6 +40,7 @@ export interface AnnotationBase {
   opacity?: number
   locked?: boolean
   visible?: boolean
+  groupId?: string
 }
 
 export type DashStyle = 'solid' | 'dashed' | 'dotted'
@@ -50,6 +53,9 @@ export interface ArrowAnnotation extends AnnotationBase {
   headSize: number
   doubleHead?: boolean
   dash?: DashStyle
+  curved?: boolean
+  controlX?: number // bezier control point (relative to annotation origin)
+  controlY?: number
 }
 
 export interface TextAnnotation extends AnnotationBase {
@@ -172,6 +178,22 @@ export interface StampAnnotation extends AnnotationBase {
 
 export const STAMP_PRESETS = ['DRAFT', 'APPROVED', 'REJECTED', 'CONFIDENTIAL', 'REVIEW', 'FINAL']
 
+export interface MagnifierAnnotation extends AnnotationBase {
+  type: 'magnifier'
+  // Source region on the canvas to zoom into
+  sourceX: number
+  sourceY: number
+  sourceWidth: number
+  sourceHeight: number
+  // Display size (the enlarged view)
+  width: number
+  height: number
+  zoom: number // e.g. 2 = 2x magnification
+  borderColor: string
+  borderWidth: number
+  dash?: DashStyle
+}
+
 export type Annotation =
   | ArrowAnnotation
   | TextAnnotation
@@ -186,6 +208,7 @@ export type Annotation =
   | CounterAnnotation
   | DimensionAnnotation
   | StampAnnotation
+  | MagnifierAnnotation
 
 export interface ImageItem {
   id: string
