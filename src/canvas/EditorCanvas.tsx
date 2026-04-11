@@ -48,7 +48,7 @@ export function EditorCanvas() {
   const updateImage = useProjectStore((s) => s.updateImage)
   const pushHistory = useProjectStore((s) => s.pushHistory)
 
-  const { onMouseDown, onMouseMove, onMouseUp } = useDrawingHandler(stageRef)
+  const { onMouseDown, onMouseMove, onMouseUp, onWheelDuringDraw } = useDrawingHandler(stageRef)
   useImageDrop(containerRef)
 
   // Touch: pinch-to-zoom and two-finger pan
@@ -310,6 +310,9 @@ export function EditorCanvas() {
   const handleWheel = useCallback(
     (e: Konva.KonvaEventObject<WheelEvent>) => {
       e.evt.preventDefault()
+
+      if (onWheelDuringDraw(e.evt.deltaY)) return
+
       const stage = stageRef.current
       if (!stage) return
 
@@ -331,7 +334,7 @@ export function EditorCanvas() {
         y: pointer.y - mousePointTo.y * clampedScale,
       })
     },
-    [zoom, stagePos, setZoom, setStagePos],
+    [zoom, stagePos, setZoom, setStagePos, onWheelDuringDraw],
   )
 
   // Click handler
