@@ -188,7 +188,7 @@ export function PropertyPanel() {
               )}
               {toolDefaults.fill && (
                 <ColorPicker label="Fill Color" value={fillColor} presets={COLOR_PRESETS}
-                  allowTransparent={activeTool === 'rectangle' || activeTool === 'ellipse'}
+                  allowTransparent={activeTool === 'rectangle' || activeTool === 'ellipse' || activeTool === 'textbox'}
                   onClear={() => setFillColor('transparent')}
                   onChange={(c) => setFillColor(c)} />
               )}
@@ -292,6 +292,7 @@ export function PropertyPanel() {
             {/* Background color for textboxes */}
             {isTextBox && (
               <ColorPicker label="Background" value={(ann as any).backgroundColor || '#fff'} presets={COLOR_PRESETS}
+                allowTransparent onClear={() => updateAnn({ backgroundColor: 'transparent' } as any)}
                 onChange={(c) => updateAnn({ backgroundColor: c } as any)} />
             )}
 
@@ -654,7 +655,7 @@ function ColorPicker({ label, value, presets, onChange, allowTransparent, onClea
             style={{ backgroundColor: c, width: 18, height: 18 }} onClick={() => onChange(c)} />
         ))}
       </div>
-      <input type="color" value={value || '#ffffff'} onChange={(e) => onChange(e.target.value)}
+      <input type="color" value={isNoFill ? '#ffffff' : (value || '#ffffff')} onChange={(e) => onChange(e.target.value)}
         className="w-full h-7 rounded cursor-pointer bg-transparent" />
     </div>
   )
