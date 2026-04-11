@@ -305,7 +305,7 @@ export function PropertyPanel() {
 
             {/* Counter size */}
             {ann.type === 'counter' && (
-              <SliderInput label="Size" value={(ann as any).radius} min={8} max={64}
+              <SliderInput label="Size" value={(ann as any).radius} min={8} max={72}
                 onChange={(v) => { setFontSize(v); updateAnn({ radius: v, fontSize: v } as any) }} />
             )}
 
