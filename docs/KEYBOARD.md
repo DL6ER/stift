@@ -38,6 +38,14 @@ Press `?` inside the app for an in-context reference panel.
 | `Shift+]` / `Shift+[` | Layer to front / back |
 | `Shift+click` | Multi-select |
 
+## Drawing modifiers
+
+| Key | Action |
+|-----|--------|
+| `Shift+drag` (line/arrow/dimension) | Snap to 15-degree angles |
+| `Shift+drag` (rectangle/ellipse/etc.) | Constrain to square / circle |
+| `Shift+drag` (resize handle) | Proportional resize (fixed aspect ratio) |
+
 ## Canvas
 
 | Key | Action |

@@ -23,6 +23,7 @@ export function EditorCanvas() {
   const [containerSize, setContainerSize] = useState({ width: 800, height: 600 })
   const [isPanning, setIsPanning] = useState(false)
   const [spaceHeld, setSpaceHeld] = useState(false)
+  const [shiftHeld, setShiftHeld] = useState(false)
   const panStart = useRef<{ x: number; y: number } | null>(null)
   const [selectionBox, setSelectionBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const selBoxStart = useRef<{ x: number; y: number } | null>(null)
@@ -85,9 +86,11 @@ export function EditorCanvas() {
         e.preventDefault()
         setSpaceHeld(true)
       }
+      if (e.key === 'Shift') setShiftHeld(true)
     }
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.code === 'Space') setSpaceHeld(false)
+      if (e.key === 'Shift') setShiftHeld(false)
     }
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
@@ -557,6 +560,7 @@ export function EditorCanvas() {
           )}
           <Transformer
             ref={transformerRef}
+            keepRatio={shiftHeld}
             boundBoxFunc={(oldBox, newBox) => {
               if (newBox.width < 5 || newBox.height < 5) return oldBox
               return newBox

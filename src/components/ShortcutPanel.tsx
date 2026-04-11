@@ -17,6 +17,9 @@ const SHORTCUTS = [
     ['Scroll', 'Zoom'], ['Ctrl+=', 'Zoom In'], ['Ctrl+-', 'Zoom Out'], ['Ctrl+0', '100%'],
     ['Space+Drag', 'Pan'], ['Shift+Click', 'Multi-select'],
   ]],
+  ['Drawing modifiers', [
+    ['Shift+Drag', 'Snap angle / square / proportional resize'],
+  ]],
   ['Editing', [
     ['Arrow Keys', 'Nudge 1px'], ['Shift+Arrow', 'Nudge 10px'],
     [']', 'Layer Forward'], ['[', 'Layer Backward'],
