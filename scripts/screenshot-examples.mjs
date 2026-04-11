@@ -24,7 +24,10 @@ async function screenshotExample(page, exampleIndex, filename) {
   console.log(`Saved: ${filename}`)
 }
 
-const browser = await chromium.launch({ headless: true })
+const browser = await chromium.launch({
+  headless: true,
+  args: ['--disable-gpu', '--font-render-hinting=none', '--disable-lcd-text', '--disable-font-subpixel-positioning'],
+})
 const context = await browser.newContext({ viewport: { width: 1920, height: 1080 } })
 
 const count = parseInt(process.env.EXAMPLES || '6', 10)

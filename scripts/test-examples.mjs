@@ -34,7 +34,10 @@ function compareBuffers(actual, reference) {
   return diffBytes / maxLen
 }
 
-const browser = await chromium.launch({ headless: true })
+const browser = await chromium.launch({
+  headless: true,
+  args: ['--disable-gpu', '--font-render-hinting=none', '--disable-lcd-text', '--disable-font-subpixel-positioning'],
+})
 const context = await browser.newContext({ viewport: { width: 1920, height: 1080 } })
 
 const names = ['Bug Report', 'PCB Inspection', 'Weld Analysis', 'Server Room Audit', 'Bridge Inspection', 'Solar Panel Array']
