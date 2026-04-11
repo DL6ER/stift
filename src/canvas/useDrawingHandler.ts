@@ -18,6 +18,16 @@ import {
   DEFAULT_COUNTER_RADIUS, DEFAULT_CORNER_RADIUS, DEFAULT_HIGHLIGHT_COLOR,
 } from '../types'
 
+// Build the correct patch when changing stroke width, keeping derived
+// properties (arrow head size, dimension cap size) in sync.
+// TODO: Maybe there is a better place for this function to be exposed - maybe a utils file?
+export function strokeWidthPatch(type: string, width: number): Record<string, unknown> {
+  const patch: Record<string, unknown> = { strokeWidth: width }
+  if (type === 'arrow') patch.headSize = width * 3
+  if (type === 'dimension') patch.capSize = width * 5
+  return patch
+}
+
 // Snap a point to the nearest 15-degree angle relative to an origin.
 // Used when Shift is held during line/arrow/dimension drawing.
 function snapAngle(origin: { x: number; y: number }, pos: { x: number; y: number }): { x: number; y: number } {
@@ -384,7 +394,7 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
       const direction = deltaY > 0 ? -1 : 1
       const newWidth = Math.max(1, Math.min(20, strokeWidth + direction))
       setStrokeWidth(newWidth)
-      updateAnnotation(drawingIdRef.current, { strokeWidth: newWidth })
+      updateAnnotation(drawingIdRef.current, strokeWidthPatch(activeTool, newWidth))
       return true
     },
     [activeTool, strokeWidth, setStrokeWidth, updateAnnotation],
