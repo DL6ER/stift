@@ -48,16 +48,66 @@ jobs:
         run: npm run build
 
       - name: Upload build artifacts
-        # Only runs when every previous step succeeded (default
-        # GitHub Actions semantics, but stated explicitly here so
-        # the intent is obvious if someone later adds a step with
-        # continue-on-error: true). The artifact is useful for
-        # debugging when a build passes locally but fails in CI;
-        # reviewers can download the dist and inspect it.
-        # Retained for 7 days to avoid filling up the org storage.
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/
           retention-days: 7
+
+  visual:
+    name: visual regression
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Stift container
+        run: docker build -t stift-ci .
+
+      - name: Start Stift container
+        run: |
+          docker run -d --name stift-ci \
+            -p 8080:8080 \
+            -v ${{ github.workspace }}/data:/data \
+            stift-ci
+          # Wait for the health check to pass
+          for i in $(seq 1 30); do
+            if docker exec stift-ci wget -q --spider http://127.0.0.1:8080/api/config 2>/dev/null; then
+              echo "Stift is ready"
+              break
+            fi
+            echo "Waiting for Stift... ($i/30)"
+            sleep 2
+          done
+
+      - name: Run visual regression tests
+        run: |
+          docker run --rm \
+            --add-host=host.docker.internal:host-gateway \
+            -e URL=http://host.docker.internal:8080 \
+            -e THRESHOLD=0.01 \
+            -v ${{ github.workspace }}/scripts:/scripts-src:ro \
+            -v ${{ github.workspace }}/test/reference:/reference:ro \
+            -v ${{ github.workspace }}/test:/screenshots \
+            mcr.microsoft.com/playwright:v1.52.0-noble \
+            bash -c "
+              cp /scripts-src/*.mjs /tmp/ && cd /tmp &&
+              npm install playwright@1.52.0 pngjs 2>/dev/null &&
+              node test-examples.mjs
+            "
+
+      - name: Upload failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-failures
+          path: |
+            test/*_actual.png
+            test/*_diff.png
+          retention-days: 7
+
+      - name: Stop Stift container
+        if: always()
+        run: docker rm -f stift-ci 2>/dev/null || true

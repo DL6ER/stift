@@ -449,8 +449,12 @@ await test('Zoom controls work', async () => {
 // PROPERTY PANEL
 // ===========================================
 
-await test('Property panel shows tool defaults when nothing selected', async () => {
+await test('Property panel shows tool defaults when drawing tool active', async () => {
   const page = await freshPage(browser)
+  // Switch to a drawing tool so the panel shows defaults. Wait for
+  // the intro animation (700ms) + render to settle.
+  await page.keyboard.press('r')
+  await page.waitForTimeout(1000)
   const text = await page.textContent('body')
   assert(text.includes('Tool defaults'), 'Should show tool defaults')
   assert(text.includes('Stroke Color'), 'Should show stroke color')
