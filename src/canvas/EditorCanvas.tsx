@@ -24,6 +24,10 @@ export function EditorCanvas() {
   const [isPanning, setIsPanning] = useState(false)
   const [spaceHeld, setSpaceHeld] = useState(false)
   const [shiftHeld, setShiftHeld] = useState(false)
+  // Eyedropper loupe state
+  const [eyedropperActive, setEyedropperActive] = useState(false)
+  const [eyedropperColor, setEyedropperColor] = useState('#000000')
+  const loupeRef = useRef<HTMLCanvasElement>(null)
   const panStart = useRef<{ x: number; y: number } | null>(null)
   const [selectionBox, setSelectionBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const selBoxStart = useRef<{ x: number; y: number } | null>(null)
@@ -217,6 +221,91 @@ export function EditorCanvas() {
     tr.getLayer()?.batchDraw()
   }, [selectedIds])
 
+  // Eyedropper: 5x magnified loupe following the real cursor position.
+  const LOUPE_SIZE = 120
+  const LOUPE_MAG = 5
+
+  const updateLoupe = useCallback((screenX: number, screenY: number) => {
+    const stage = stageRef.current
+    const loupe = loupeRef.current
+    if (!stage || !loupe) return
+    const ctx = loupe.getContext('2d')
+    if (!ctx) return
+    const pointer = stage.getPointerPosition()
+    if (!pointer) return
+    const stageCanvas = stage.toCanvas()
+    const ratio = stageCanvas.width / stage.width()
+    // Composite onto a white background so transparent areas render
+    // opaque in the loupe and the sampled color is what the user sees.
+    const flat = document.createElement('canvas')
+    flat.width = stageCanvas.width
+    flat.height = stageCanvas.height
+    const fCtx = flat.getContext('2d')!
+    fCtx.fillStyle = '#ffffff'
+    fCtx.fillRect(0, 0, flat.width, flat.height)
+    fCtx.drawImage(stageCanvas, 0, 0)
+    const px = pointer.x * ratio
+    const py = pointer.y * ratio
+    const srcSize = (LOUPE_SIZE / LOUPE_MAG) * ratio
+    ctx.imageSmoothingEnabled = false
+    ctx.clearRect(0, 0, LOUPE_SIZE, LOUPE_SIZE)
+    ctx.drawImage(flat, px - srcSize / 2, py - srcSize / 2, srcSize, srcSize, 0, 0, LOUPE_SIZE, LOUPE_SIZE)
+    const mid = LOUPE_SIZE / 2
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)'
+    ctx.lineWidth = 1
+    ctx.strokeRect(mid - LOUPE_MAG / 2, mid - LOUPE_MAG / 2, LOUPE_MAG, LOUPE_MAG)
+    const pixel = fCtx.getImageData(Math.round(px), Math.round(py), 1, 1).data
+    const hex = '#' + [pixel[0], pixel[1], pixel[2]].map(c => c.toString(16).padStart(2, '0')).join('')
+    setEyedropperColor(hex)
+    loupe.style.left = (screenX - LOUPE_SIZE / 2) + 'px'
+    loupe.style.top = (screenY - LOUPE_SIZE - 20) + 'px'
+    const label = document.getElementById('eyedropper-label')
+    if (label) {
+      label.style.left = (screenX - 30) + 'px'
+      label.style.top = (screenY - LOUPE_SIZE - 40) + 'px'
+    }
+  }, [stageRef])
+
+  const handleEyedropperDown = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (activeTool !== 'eyedropper') return
+    setEyedropperActive(true)
+    updateLoupe(e.evt.clientX, e.evt.clientY)
+  }, [activeTool, updateLoupe])
+
+  const handleEyedropperMove = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (!eyedropperActive || activeTool !== 'eyedropper') return
+    updateLoupe(e.evt.clientX, e.evt.clientY)
+  }, [eyedropperActive, activeTool, updateLoupe])
+
+  const handleEyedropperUp = useCallback(() => {
+    if (!eyedropperActive) return
+    setEyedropperActive(false)
+    const color = eyedropperColor
+    const store = useEditorStore.getState()
+    const pStore = useProjectStore.getState()
+    const sel = store.selectedIds
+
+    // If annotations are selected, apply the picked color to them
+    if (sel.length > 0) {
+      pStore.pushHistory()
+      for (const id of sel) {
+        const ann = pStore.annotations.find(a => a.id === id)
+        if (!ann) continue
+        const patch: Record<string, any> = {}
+        if ('stroke' in ann) patch.stroke = color
+        if ('fill' in ann) patch.fill = color
+        if (ann.type === 'textbox') { patch.borderColor = color; delete patch.fill }
+        if (ann.type === 'text') { /* fill is text color, correct */ }
+        pStore.updateAnnotation(id, patch)
+      }
+    }
+
+    // Always update defaults too
+    store.setStrokeColor(color)
+    store.setFillColor(color)
+    store.setActiveTool('select')
+  }, [eyedropperActive, eyedropperColor])
+
   // Zoom with mouse wheel
   const handleWheel = useCallback(
     (e: Konva.KonvaEventObject<WheelEvent>) => {
@@ -248,6 +337,9 @@ export function EditorCanvas() {
   // Click handler
   const handleStageClick = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
+      // Eyedropper handled via mousedown/move/up below, not click
+      if (activeTool === 'eyedropper') return
+
       // Connector tool: two-click interaction
       if (activeTool === 'connector') {
         const stage = stageRef.current
@@ -341,7 +433,7 @@ export function EditorCanvas() {
   }, [images])
 
   const isDrawingTool = activeTool !== 'select'
-  const cursor = spaceHeld || isPanning ? 'grab' : isDrawingTool ? 'crosshair' : 'default'
+  const cursor = spaceHeld || isPanning ? 'grab' : activeTool === 'eyedropper' ? 'crosshair' : isDrawingTool ? 'crosshair' : 'default'
 
   return (
     <div
@@ -351,6 +443,21 @@ export function EditorCanvas() {
     >
       <InlineTextEditor />
       <ToolHint />
+      {/* Eyedropper loupe overlay */}
+      {eyedropperActive && (
+        <>
+          <canvas
+            ref={loupeRef}
+            width={LOUPE_SIZE}
+            height={LOUPE_SIZE}
+            className="fixed z-50 pointer-events-none border-2 border-white rounded-full shadow-2xl"
+            style={{ imageRendering: 'pixelated', clipPath: 'circle(50%)' }}
+          />
+          <div id="eyedropper-label" className="fixed z-50 pointer-events-none text-center text-xs font-mono text-white bg-black/80 rounded px-2 py-0.5">
+            {eyedropperColor}
+          </div>
+        </>
+      )}
       <Stage
         ref={stageRef}
         width={containerSize.width}
@@ -360,9 +467,9 @@ export function EditorCanvas() {
         x={stagePos.x}
         y={stagePos.y}
         onWheel={handleWheel}
-        onMouseDown={(e) => { handlePanMouseDown(e); handleSelBoxStart(e); if (!spaceHeld && e.evt.button !== 1) onMouseDown(e) }}
-        onMouseMove={(e) => { handlePanMouseMove(e); handleSelBoxMove(e); if (!isPanning) onMouseMove(e) }}
-        onMouseUp={() => { handlePanMouseUp(); handleSelBoxEnd(); if (!isPanning) onMouseUp() }}
+        onMouseDown={(e) => { handleEyedropperDown(e); handlePanMouseDown(e); handleSelBoxStart(e); if (!spaceHeld && e.evt.button !== 1) onMouseDown(e) }}
+        onMouseMove={(e) => { handleEyedropperMove(e); handlePanMouseMove(e); handleSelBoxMove(e); if (!isPanning) onMouseMove(e) }}
+        onMouseUp={() => { handleEyedropperUp(); handlePanMouseUp(); handleSelBoxEnd(); if (!isPanning) onMouseUp() }}
         onClick={(e) => { if (!spaceHeld) handleStageClick(e) }}
         onDblClick={handleDblClick}
         onTouchMove={handleTouchMove}

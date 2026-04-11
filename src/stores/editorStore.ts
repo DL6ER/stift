@@ -82,7 +82,12 @@ const initialPin = (() => {
 
 export const useEditorStore = create<EditorState>((set) => ({
   activeTool: 'select',
-  setActiveTool: (tool) => set({ activeTool: tool, selectedIds: [], croppingImageId: null }),
+  setActiveTool: (tool) => set((s) => ({
+    activeTool: tool,
+    // Eyedropper keeps the selection so the picked color applies to it
+    selectedIds: tool === 'eyedropper' ? s.selectedIds : [],
+    croppingImageId: null,
+  })),
 
   strokeColor: DEFAULT_STROKE_COLOR,
   fillColor: 'transparent',
