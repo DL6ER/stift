@@ -136,6 +136,7 @@ export function PropertyPanel() {
   const isDimension = ann?.type === 'dimension'
   const isBlur = ann?.type === 'blur'
   const isStamp = ann?.type === 'stamp'
+  const isMagnifier = ann?.type === 'magnifier'
 
   return (
     <div
@@ -333,6 +334,31 @@ export function PropertyPanel() {
                 onChange={(v) => { setBlurPixelSize(v); updateAnn({ pixelSize: v } as any) }} />
             )}
 
+            {/* Magnifier controls */}
+            {isMagnifier && (
+              <>
+                <ColorPicker label="Border Color" value={(ann as any).borderColor} presets={COLOR_PRESETS}
+                  onChange={(c) => updateAnn({ borderColor: c } as any)} />
+                <SliderInput label="Border" value={(ann as any).borderWidth ?? 2} min={0} max={8}
+                  onChange={(v) => updateAnn({ borderWidth: v } as any)} />
+                <div>
+                  <label className="block text-xs text-gray-400 mb-0.5">Line Style</label>
+                  <select value={(ann as any).dash || 'dashed'}
+                    onChange={(e) => updateAnn({ dash: e.target.value } as any)}
+                    className="w-full bg-surface-overlay border border-border rounded px-2 py-1 text-xs text-gray-300 outline-none">
+                    <option value="solid">Solid</option>
+                    <option value="dashed">Dashed</option>
+                    <option value="dotted">Dotted</option>
+                  </select>
+                </div>
+                <button
+                  onClick={() => (window as any).__refreshMagnifier?.()}
+                  className="w-full text-xs bg-surface-overlay border border-border rounded px-2 py-1 text-gray-300 hover:bg-surface-overlay/80">
+                  Refresh capture
+                </button>
+              </>
+            )}
+
             {/* Opacity */}
             <SliderInput label="Opacity" value={Math.round((ann.opacity ?? 1) * 100)} min={0} max={100} suffix="%"
               onChange={(v) => updateAnn({ opacity: v / 100 })} />
@@ -351,13 +377,25 @@ export function PropertyPanel() {
               </div>
             )}
 
-            {/* Double-head arrow */}
+            {/* Arrow options */}
             {isArrow && (
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={(ann as any).doubleHead ?? false}
-                  onChange={(e) => updateAnn({ doubleHead: e.target.checked } as any)} className="accent-accent" />
-                <span className="text-xs text-gray-400">Double-head arrow</span>
-              </label>
+              <>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={(ann as any).doubleHead ?? false}
+                    onChange={(e) => updateAnn({ doubleHead: e.target.checked } as any)} className="accent-accent" />
+                  <span className="text-xs text-gray-400">Double-head</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={(ann as any).curved ?? false}
+                    onChange={(e) => {
+                      const pts = (ann as any).points as number[]
+                      const cx = (pts[0] + pts[2]) / 2
+                      const cy = (pts[1] + pts[3]) / 2 - 50
+                      updateAnn({ curved: e.target.checked, controlX: cx, controlY: cy } as any)
+                    }} className="accent-accent" />
+                  <span className="text-xs text-gray-400">Curved</span>
+                </label>
+              </>
             )}
 
             {/* Corner radius */}
@@ -444,6 +482,12 @@ export function PropertyPanel() {
                 <LayerBtn icon={ChevronsUp} title="Bring to Front" onClick={() => { pushHistory(); useProjectStore.getState().moveAnnotationToFront(ann.id) }} />
               </div>
             </div>
+
+            {/* Lock position */}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={ann.locked ?? false} onChange={(e) => { pushHistory(); updateAnn({ locked: e.target.checked }) }} className="accent-accent" />
+              <span className="text-xs text-gray-400">Lock position</span>
+            </label>
           </>
         )}
 
@@ -615,11 +659,11 @@ function ColorPicker({ label, value, presets, onChange, allowTransparent, onClea
   )
 }
 
-function SliderInput({ label, value, min, max, suffix, onChange }: { label: string; value: number; min: number; max: number; suffix?: string; onChange: (v: number) => void }) {
+function SliderInput({ label, value, min, max, suffix, step, onChange }: { label: string; value: number; min: number; max: number; suffix?: string; step?: number; onChange: (v: number) => void }) {
   return (
     <div>
       <label className="block text-xs text-gray-400 mb-0.5">{label}: {value}{suffix || ''}</label>
-      <input type="range" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full accent-accent" />
+      <input type="range" min={min} max={max} step={step || 1} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full accent-accent" />
     </div>
   )
 }
