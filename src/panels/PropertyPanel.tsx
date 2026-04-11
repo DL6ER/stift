@@ -104,11 +104,12 @@ export function PropertyPanel() {
     return () => clearTimeout(t)
   }, [])
 
-  // Collapse to a thin strip when there's nothing useful to show: no
-  // selection, not pinned, and the intro has finished playing. Width
-  // is animated via a CSS transition on the outer container, so this
-  // boolean flip is what drives the open/close animation.
-  const collapsed = introPlayed && !hasSelection && !propertyPanelPinned
+  // Collapse when there's nothing useful to show. Stay open when:
+  // something is selected, the panel is pinned, OR a drawing tool
+  // with settable defaults is active (so the user can pre-set
+  // colors/sizes before drawing).
+  const hasToolDefaults = !!toolDefaults
+  const collapsed = introPlayed && !hasSelection && !propertyPanelPinned && !hasToolDefaults
 
   // Delayed-unmount: when collapsing, keep the expanded content
   // mounted for the duration of the width animation so it can slide
