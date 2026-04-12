@@ -18,6 +18,16 @@ import {
   DEFAULT_COUNTER_RADIUS, DEFAULT_CORNER_RADIUS, DEFAULT_HIGHLIGHT_COLOR,
 } from '../types'
 
+// Build the correct patch when changing stroke width, keeping derived
+// properties (arrow head size, dimension cap size) in sync.
+// TODO: Maybe there is a better place for this function to be exposed - maybe a utils file?
+export function strokeWidthPatch(type: string, width: number): Record<string, unknown> {
+  const patch: Record<string, unknown> = { strokeWidth: width }
+  if (type === 'arrow') patch.headSize = width * 3
+  if (type === 'dimension') patch.capSize = width * 5
+  return patch
+}
+
 // Snap a point to the nearest 15-degree angle relative to an origin.
 // Used when Shift is held during line/arrow/dimension drawing.
 function snapAngle(origin: { x: number; y: number }, pos: { x: number; y: number }): { x: number; y: number } {
@@ -51,7 +61,9 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
   const strokeColor = useEditorStore((s) => s.strokeColor)
   const fillColor = useEditorStore((s) => s.fillColor)
   const strokeWidth = useEditorStore((s) => s.strokeWidth)
+  const setStrokeWidth = useEditorStore((s) => s.setStrokeWidth)
   const fontSize = useEditorStore((s) => s.fontSize)
+  const setFontSize = useEditorStore((s) => s.setFontSize)
   const fontFamily = useEditorStore((s) => s.fontFamily)
   const blurPixelSize = useEditorStore((s) => s.blurPixelSize)
   const opacity = useEditorStore((s) => s.opacity)
@@ -375,5 +387,26 @@ export function useDrawingHandler(stageRef: React.RefObject<Konva.Stage | null>)
     startPosRef.current = null
   }, [activeTool, setIsDrawing])
 
-  return { onMouseDown, onMouseMove, onMouseUp }
+  const onWheelDuringDraw = useCallback(
+    (deltaY: number): boolean => {
+      if (!drawingIdRef.current) return false
+      const direction = deltaY > 0 ? -1 : 1
+
+      if (activeTool === 'counter') {
+        const newSize = Math.max(8, Math.min(72, fontSize + direction))
+        setFontSize(newSize)
+        updateAnnotation(drawingIdRef.current, { fontSize: newSize, radius: newSize })
+        return true
+      }
+
+      if (!['arrow', 'rectangle', 'ellipse', 'line', 'draw', 'dimension'].includes(activeTool)) return false
+      const newWidth = Math.max(1, Math.min(20, strokeWidth + direction))
+      setStrokeWidth(newWidth)
+      updateAnnotation(drawingIdRef.current, strokeWidthPatch(activeTool, newWidth))
+      return true
+    },
+    [activeTool, strokeWidth, setStrokeWidth, fontSize, setFontSize, updateAnnotation],
+  )
+
+  return { onMouseDown, onMouseMove, onMouseUp, onWheelDuringDraw }
 }
