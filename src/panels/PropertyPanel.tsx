@@ -10,6 +10,7 @@ import { ChevronUp, ChevronDown, ChevronsUp, ChevronsDown, Pin, PinOff } from 'l
 import { useEditorStore } from '../stores/editorStore'
 import { useProjectStore } from '../stores/projectStore'
 import { Annotation, FONT_OPTIONS, STAMP_PRESETS, ToolType } from '../types'
+import { strokeWidthPatch } from '../canvas/useDrawingHandler'
 
 const COLOR_PRESETS = ['#e74c3c', '#e67e22', '#f39c12', '#2ecc71', '#3498db', '#9b59b6', '#1abc9c', '#34495e', '#ffffff', '#000000']
 
@@ -299,12 +300,12 @@ export function PropertyPanel() {
             {/* Stroke width */}
             {hasStroke && (
               <SliderInput label="Stroke Width" value={(ann as any).strokeWidth} min={1} max={20}
-                onChange={(v) => { setStrokeWidth(v); updateAnn({ strokeWidth: v } as any) }} />
+                onChange={(v) => { setStrokeWidth(v); updateAnn(strokeWidthPatch(ann.type, v) as any) }} />
             )}
 
             {/* Counter size */}
             {ann.type === 'counter' && (
-              <SliderInput label="Size" value={(ann as any).radius} min={8} max={64}
+              <SliderInput label="Size" value={(ann as any).radius} min={8} max={72}
                 onChange={(v) => { setFontSize(v); updateAnn({ radius: v, fontSize: v } as any) }} />
             )}
 
