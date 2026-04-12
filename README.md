@@ -11,12 +11,33 @@
 <p align="center"><a href="https://stift.io"><strong>Live demo at stift.io</strong></a></p>
 
 <p align="center">
-  <img src="public/demo.png" alt="Stift - Server Room Audit Example" width="720">
+  <img src="test/reference/example4.png" alt="Stift - Server Room Audit Example" width="720">
 </p>
 
 Built for people who work with confidential materials: internal bug reports, hardware inspections, failure analyses, architecture diagrams, or anything else that shouldn't end up on someone else's server.
 
 Stift focuses on the essential tools you need to get the job done, without the complexity or cost of commercial alternatives. It's not trying to be Photoshop. It's trying to be the fastest path from "I need to annotate this screenshot" to "here's the report-ready image."
+
+<details>
+<summary><strong>More examples</strong> (click to expand)</summary>
+
+<br>
+
+| Bug Report | PCB Inspection |
+|:---:|:---:|
+| <img src="test/reference/example1.png" width="400"> | <img src="test/reference/example2.png" width="400"> |
+
+| Weld Cross-Section Analysis | Bridge Inspection |
+|:---:|:---:|
+| <img src="test/reference/example3.png" width="400"> | <img src="test/reference/example5.png" width="400"> |
+
+| Solar Array Inspection |
+|:---:|
+| <img src="test/reference/example6.png" width="400"> |
+
+All examples are built-in and can be loaded from the onboarding screen.
+
+</details>
 
 <p align="center">
   <strong>Made in Germany 🇩🇪.</strong><br>
