@@ -257,10 +257,10 @@ export default function App() {
           selectedIds.forEach((id) => {
             removeAnnotation(id)
             removeImage(id)
-            // Also try removing as connector or ROI
             store.removeConnector(id)
             store.removeROI(id)
           })
+          setSelectedIds([])
         }
         return
       }

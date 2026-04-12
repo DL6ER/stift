@@ -37,15 +37,23 @@ function MagnifierView({ ann, stageRef }: { ann: MagnifierAnnotation; stageRef: 
       try {
         const selfNode = stage.findOne('#' + ann.id)
         if (selfNode) selfNode.visible(false)
-        // Hide Transformer resize handles so they don't appear in the capture
         const transformers = stage.find('Transformer')
         transformers.forEach((tr: any) => tr.visible(false))
+        // Reset zoom/pan so toDataURL clips in world coordinates,
+        // not screen pixels. Without this, the captured region
+        // shifts when the canvas is zoomed or panned.
+        const savedScale = { x: stage.scaleX(), y: stage.scaleY() }
+        const savedPos = { x: stage.x(), y: stage.y() }
+        stage.scaleX(1); stage.scaleY(1)
+        stage.x(0); stage.y(0)
         stage.batchDraw()
         const dataURL = stage.toDataURL({
           x: ann.sourceX, y: ann.sourceY,
           width: ann.sourceWidth, height: ann.sourceHeight,
           pixelRatio: ann.zoom,
         })
+        stage.scaleX(savedScale.x); stage.scaleY(savedScale.y)
+        stage.x(savedPos.x); stage.y(savedPos.y)
         if (selfNode) selfNode.visible(true)
         transformers.forEach((tr: any) => tr.visible(true))
         stage.batchDraw()
@@ -677,49 +685,48 @@ export function AnnotationRenderer({ stageRef }: Props) {
           case 'magnifier': {
             const mag = ann as import('../types').MagnifierAnnotation
             if (mag.sourceWidth < 2 || mag.sourceHeight < 2) return null
-            // Compute connecting line endpoints based on relative position
-            // of target to source so the line always exits the nearest edge.
-            const srcRelX = mag.sourceX - mag.x
-            const srcRelY = mag.sourceY - mag.y
-            const srcCX = srcRelX + mag.sourceWidth / 2
-            const srcCY = srcRelY + mag.sourceHeight / 2
-            const tgtCX = mag.width / 2
-            const tgtCY = mag.height / 2
-            const dx = tgtCX - srcCX
-            const dy = tgtCY - srcCY
+            // Connecting line: compute endpoints based on relative
+            // position so the line docks to the nearest edge pair.
+            const srcCX = mag.sourceX + mag.sourceWidth / 2
+            const srcCY = mag.sourceY + mag.sourceHeight / 2
+            const tgtCX = mag.x + mag.width / 2
+            const tgtCY = mag.y + mag.height / 2
+            const ldx = tgtCX - srcCX
+            const ldy = tgtCY - srcCY
             let linePts: number[]
-            if (Math.abs(dx) >= Math.abs(dy)) {
-              // Horizontal: connect left/right edges
-              if (dx >= 0) {
-                linePts = [srcRelX + mag.sourceWidth, srcCY, 0, tgtCY]
+            if (Math.abs(ldx) >= Math.abs(ldy)) {
+              if (ldx >= 0) {
+                linePts = [mag.sourceX + mag.sourceWidth, srcCY, mag.x, tgtCY]
               } else {
-                linePts = [srcRelX, srcCY, mag.width, tgtCY]
+                linePts = [mag.sourceX, srcCY, mag.x + mag.width, tgtCY]
               }
             } else {
-              // Vertical: connect top/bottom edges
-              if (dy >= 0) {
-                linePts = [srcCX, srcRelY + mag.sourceHeight, tgtCX, 0]
+              if (ldy >= 0) {
+                linePts = [srcCX, mag.sourceY + mag.sourceHeight, tgtCX, mag.y]
               } else {
-                linePts = [srcCX, srcRelY, tgtCX, mag.height]
+                linePts = [srcCX, mag.sourceY, tgtCX, mag.y + mag.height]
               }
             }
+            // Render source outline + connecting line as non-interactive
+            // decoration at absolute canvas coordinates, separate from
+            // the display box which is the only selectable/resizable part.
             return (
-              <Group key={ann.id} {...common}>
-                {/* Source region outline */}
+              <React.Fragment key={ann.id}>
                 <Rect
-                  x={srcRelX} y={srcRelY}
+                  x={mag.sourceX} y={mag.sourceY}
                   width={mag.sourceWidth} height={mag.sourceHeight}
                   stroke={mag.borderColor} strokeWidth={mag.borderWidth}
                   dash={dashArray(mag.dash, mag.borderWidth)}
+                  listening={false}
                 />
-                {/* Connecting line -- docks to nearest edge pair */}
                 <Line
                   points={linePts}
                   stroke={mag.borderColor} strokeWidth={mag.borderWidth}
                   dash={dashArray(mag.dash, mag.borderWidth)}
+                  listening={false}
                 />
-                {/* Enlarged display: image first, border on top */}
-                <Group>
+                {/* Display box: only this is selectable + resizable */}
+                <Group {...common}>
                   <Rect width={mag.width} height={mag.height} fill="#1e1e2e" />
                   <MagnifierView ann={mag} stageRef={stageRef} />
                   <Rect
@@ -728,7 +735,7 @@ export function AnnotationRenderer({ stageRef }: Props) {
                     dash={dashArray(mag.dash, mag.borderWidth)}
                   />
                 </Group>
-              </Group>
+              </React.Fragment>
             )
           }
 
