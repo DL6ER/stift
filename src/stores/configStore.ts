@@ -11,6 +11,8 @@ interface ConfigState {
   compressUploads: boolean
   footerLinks: FooterLink[]
   sponsorUrl: string | null
+  oidcEnabled: boolean
+  oidcLoginLabel: string
   loaded: boolean
   fetchConfig: () => Promise<void>
 }
@@ -21,6 +23,8 @@ export const useConfigStore = create<ConfigState>((set) => ({
   compressUploads: true,
   footerLinks: [],
   sponsorUrl: null,
+  oidcEnabled: false,
+  oidcLoginLabel: 'Mit Single Sign-On anmelden',
   loaded: false,
   fetchConfig: async () => {
     try {
@@ -33,6 +37,10 @@ export const useConfigStore = create<ConfigState>((set) => ({
           compressUploads: data.compressUploads ?? true,
           footerLinks: Array.isArray(data.footerLinks) ? data.footerLinks : [],
           sponsorUrl: data.sponsorUrl || null,
+          oidcEnabled: !!data.oidcEnabled,
+          oidcLoginLabel: typeof data.oidcLoginLabel === 'string' && data.oidcLoginLabel
+            ? data.oidcLoginLabel
+            : 'Mit Single Sign-On anmelden',
           loaded: true,
         })
       } else {
