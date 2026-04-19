@@ -28,6 +28,9 @@ export function EditorCanvas() {
   const [eyedropperActive, setEyedropperActive] = useState(false)
   const [eyedropperColor, setEyedropperColor] = useState('#000000')
   const loupeRef = useRef<HTMLCanvasElement>(null)
+  // Cached flattened canvas -- captured once on mousedown, reused
+  // on every mousemove to avoid calling stage.toCanvas() per frame.
+  const eyedropperCanvasRef = useRef<{ canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; ratio: number } | null>(null)
   const panStart = useRef<{ x: number; y: number } | null>(null)
   const [selectionBox, setSelectionBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const selBoxStart = useRef<{ x: number; y: number } | null>(null)
@@ -225,18 +228,11 @@ export function EditorCanvas() {
   const LOUPE_SIZE = 120
   const LOUPE_MAG = 5
 
-  const updateLoupe = useCallback((screenX: number, screenY: number) => {
+  const captureEyedropperCanvas = useCallback(() => {
     const stage = stageRef.current
-    const loupe = loupeRef.current
-    if (!stage || !loupe) return
-    const ctx = loupe.getContext('2d')
-    if (!ctx) return
-    const pointer = stage.getPointerPosition()
-    if (!pointer) return
+    if (!stage) return
     const stageCanvas = stage.toCanvas()
     const ratio = stageCanvas.width / stage.width()
-    // Composite onto a white background so transparent areas render
-    // opaque in the loupe and the sampled color is what the user sees.
     const flat = document.createElement('canvas')
     flat.width = stageCanvas.width
     flat.height = stageCanvas.height
@@ -244,6 +240,19 @@ export function EditorCanvas() {
     fCtx.fillStyle = '#ffffff'
     fCtx.fillRect(0, 0, flat.width, flat.height)
     fCtx.drawImage(stageCanvas, 0, 0)
+    eyedropperCanvasRef.current = { canvas: flat, ctx: fCtx, ratio }
+  }, [stageRef])
+
+  const updateLoupe = useCallback((screenX: number, screenY: number) => {
+    const stage = stageRef.current
+    const loupe = loupeRef.current
+    const cached = eyedropperCanvasRef.current
+    if (!stage || !loupe || !cached) return
+    const ctx = loupe.getContext('2d')
+    if (!ctx) return
+    const pointer = stage.getPointerPosition()
+    if (!pointer) return
+    const { canvas: flat, ctx: fCtx, ratio } = cached
     const px = pointer.x * ratio
     const py = pointer.y * ratio
     const srcSize = (LOUPE_SIZE / LOUPE_MAG) * ratio
@@ -268,9 +277,10 @@ export function EditorCanvas() {
 
   const handleEyedropperDown = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
     if (activeTool !== 'eyedropper') return
+    captureEyedropperCanvas()
     setEyedropperActive(true)
     updateLoupe(e.evt.clientX, e.evt.clientY)
-  }, [activeTool, updateLoupe])
+  }, [activeTool, captureEyedropperCanvas, updateLoupe])
 
   const handleEyedropperMove = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
     if (!eyedropperActive || activeTool !== 'eyedropper') return
@@ -280,6 +290,7 @@ export function EditorCanvas() {
   const handleEyedropperUp = useCallback(() => {
     if (!eyedropperActive) return
     setEyedropperActive(false)
+    eyedropperCanvasRef.current = null
     const color = eyedropperColor
     const store = useEditorStore.getState()
     const pStore = useProjectStore.getState()

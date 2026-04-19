@@ -33,6 +33,8 @@ Press `?` inside the app for an in-context reference panel.
 | `Ctrl+D` | Duplicate |
 | `Ctrl+A` | Select all |
 | `Ctrl+S` | Save locally |
+| `Ctrl+G` | Group selected annotations |
+| `Ctrl+Shift+G` | Ungroup |
 | `Delete` | Remove selected |
 | `Escape` | Deselect |
 | `Arrow keys` | Nudge 1px (`Shift`: 10px) |
@@ -47,6 +49,12 @@ Press `?` inside the app for an in-context reference panel.
 | `Shift+drag` (line/arrow/dimension) | Snap to 15-degree angles |
 | `Shift+drag` (rectangle/ellipse/etc.) | Constrain to square / circle |
 | `Shift+drag` (resize handle) | Proportional resize (fixed aspect ratio) |
+
+## While drawing
+
+| Key | Action |
+|-----|--------|
+| `Scroll wheel` | Adjust stroke width (or counter size) live |
 
 ## Canvas
 
