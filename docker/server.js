@@ -4,6 +4,8 @@ import { join } from 'path'
 import { randomUUID, randomBytes, timingSafeEqual, createHmac } from 'crypto'
 import Database from 'better-sqlite3'
 import { Issuer, generators } from 'openid-client'
+import { initUserSchema, findOrCreateUser } from './lib/oidc-users.js'
+import { initOutboxSchema, enqueueWebhook, dueRetries, markDelivered, scheduleRetry } from './lib/oidc-outbox.js'
 
 // Server configuration. Adjust as needed for your deployment.
 const DATA_DIR = process.env.DATA_DIR || '/data'
@@ -143,40 +145,12 @@ db.exec(`
   );
 `)
 
-// Idempotent schema additions -- safe to run on every boot.
-// The external_oidc_sub column links a local user account to an OIDC
-// identity by subject claim. NULL on all pre-existing rows so existing
-// accounts are unaffected. The partial unique index (WHERE NOT NULL)
-// enforces one account per OIDC subject while allowing many NULL values.
-{
-  const existingCols = new Set(db.prepare("PRAGMA table_info(users)").all().map(r => r.name))
-  if (!existingCols.has('external_oidc_sub')) {
-    db.exec('ALTER TABLE users ADD COLUMN external_oidc_sub TEXT')
-  }
-  if (!existingCols.has('email')) {
-    db.exec('ALTER TABLE users ADD COLUMN email TEXT')
-  }
-}
-db.exec(`
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_oidc_sub
-    ON users(external_oidc_sub) WHERE external_oidc_sub IS NOT NULL;
-`)
+// Idempotent OIDC schema additions (columns + unique index on sub).
+initUserSchema(db)
 
 // Outbox for OIDC provision webhooks: guarantees at-least-once delivery
 // even when the receiver is unreachable on the first attempt.
-db.exec(`
-  CREATE TABLE IF NOT EXISTS oidc_webhook_outbox (
-    id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    payload        TEXT    NOT NULL,
-    signature      TEXT    NOT NULL,
-    attempts       INTEGER NOT NULL DEFAULT 0,
-    next_attempt_at INTEGER NOT NULL,
-    created_at     INTEGER NOT NULL,
-    delivered_at   INTEGER
-  );
-  CREATE INDEX IF NOT EXISTS idx_webhook_outbox_pending
-    ON oidc_webhook_outbox(next_attempt_at) WHERE delivered_at IS NULL;
-`)
+initOutboxSchema(db)
 
 await migrateLegacyUserFiles()
 console.log(`Default max projects per user: ${DEFAULT_MAX_PROJECTS_PER_USER}`)
@@ -190,12 +164,6 @@ const stmtInsertUser = db.prepare(
 const stmtGetInvite = db.prepare('SELECT * FROM invitations WHERE token = ?')
 const stmtConsumeInvite = db.prepare(
   'UPDATE invitations SET consumed_at = ?, consumed_by = ? WHERE token = ? AND consumed_at IS NULL'
-)
-const stmtGetUserByOidcSub = db.prepare('SELECT * FROM users WHERE external_oidc_sub = ?')
-const stmtGetUserByEmail = db.prepare('SELECT * FROM users WHERE email = ? LIMIT 1')
-const stmtSetOidcSub = db.prepare('UPDATE users SET external_oidc_sub = ?, email = ? WHERE username = ?')
-const stmtInsertOidcUser = db.prepare(
-  'INSERT INTO users (username, auth_token, role, max_projects, can_share_projects, created_at, external_oidc_sub, email) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
 )
 
 // ── OIDC client (discovered lazily on first use) ──────────────────────────
@@ -296,10 +264,7 @@ async function fireProvisionWebhook(payload) {
   if (!OIDC_PROVISION_WEBHOOK_URL) return
   const body = JSON.stringify(payload)
   const sig = createHmac('sha256', OIDC_PROVISION_WEBHOOK_SECRET).update(body).digest('hex')
-  const now = Math.floor(Date.now() / 1000)
-  db.prepare(
-    'INSERT INTO oidc_webhook_outbox (payload, signature, attempts, next_attempt_at, created_at) VALUES (?, ?, 0, ?, ?)'
-  ).run(body, sig, now, now)
+  enqueueWebhook(db, body, sig)
   // Fire once immediately without blocking the response.
   retryOidcWebhookOutbox().catch(() => {})
 }
@@ -311,9 +276,7 @@ async function fireProvisionWebhook(payload) {
 async function retryOidcWebhookOutbox() {
   if (!OIDC_PROVISION_WEBHOOK_URL) return
   const now = Math.floor(Date.now() / 1000)
-  const rows = db.prepare(
-    'SELECT * FROM oidc_webhook_outbox WHERE delivered_at IS NULL AND next_attempt_at <= ? AND attempts < 10'
-  ).all(now)
+  const rows = dueRetries(db, now)
   for (const row of rows) {
     try {
       const resp = await fetch(OIDC_PROVISION_WEBHOOK_URL, {
@@ -325,17 +288,14 @@ async function retryOidcWebhookOutbox() {
         body: row.payload,
       })
       if (resp.ok) {
-        db.prepare('UPDATE oidc_webhook_outbox SET delivered_at = ? WHERE id = ?')
-          .run(Math.floor(Date.now() / 1000), row.id)
+        markDelivered(db, row.id)
       } else {
         throw new Error(`HTTP ${resp.status}`)
       }
     } catch (e) {
       const attempts = row.attempts + 1
+      scheduleRetry(db, row.id, attempts, now)
       const backoff = Math.min(Math.pow(2, attempts) * 30, 3600)
-      const nextAttempt = Math.floor(Date.now() / 1000) + backoff
-      db.prepare('UPDATE oidc_webhook_outbox SET attempts = ?, next_attempt_at = ? WHERE id = ?')
-        .run(attempts, nextAttempt, row.id)
       if (attempts >= 10) {
         console.error(`[oidc] provision webhook permanently failed after ${attempts} attempts (outbox id=${row.id}):`, e.message)
       } else {
@@ -669,49 +629,18 @@ const server = createServer(async (req, res) => {
         res.end()
         return
       }
-      // Find existing user by OIDC subject, or by email (link existing account).
-      let userRow = stmtGetUserByOidcSub.get(sub)
-      let isNew = false
-      if (!userRow && email) {
-        userRow = stmtGetUserByEmail.get(email)
-        if (userRow) {
-          // Link existing account to this OIDC subject.
-          stmtSetOidcSub.run(sub, email, userRow.username)
-          userRow = stmtGetUser.get(userRow.username)
-        }
-      }
-      if (!userRow) {
-        // Provision a new account. Derive a stable username from the first 12
-        // hex characters of the SHA-256 hash of the subject claim.
-        const { createHash } = await import('crypto')
-        const base = createHash('sha256').update(sub).digest('hex').slice(0, 12)
-        let candidate = `sso-${base}`
-        // Avoid collisions (unlikely but possible).
-        let suffix = 0
-        while (stmtGetUser.get(candidate)) {
-          suffix++
-          candidate = `sso-${base}-${suffix}`
-        }
-        const authToken = randomBytes(32).toString('hex')
-        const nowTs = new Date().toISOString()
-        // UPSERT on external_oidc_sub: race-safe for concurrent callbacks for
-        // the same sub. ON CONFLICT updates the email address and leaves
-        // everything else unchanged so the second parallel request succeeds.
-        db.prepare(`
-          INSERT INTO users (username, auth_token, role, max_projects, can_share_projects, created_at, external_oidc_sub, email)
-          VALUES (?, ?, 'user', ?, 1, ?, ?, ?)
-          ON CONFLICT(external_oidc_sub) DO UPDATE SET email = excluded.email
-        `).run(candidate, authToken, DEFAULT_MAX_PROJECTS_PER_USER, nowTs, sub, email)
-        userRow = stmtGetUserByOidcSub.get(sub)
-        // isNew: true only if we actually inserted the new row.
-        isNew = userRow?.username === candidate
-        if (isNew) {
-          fireProvisionWebhook({
-            sso_user_id: sub,
-            stift_user_id: candidate,
-            email: email || '',
-          }).catch(() => {})
-        }
+      // Find or provision the local user account for this OIDC subject.
+      const { user: userRow, created: isNew } = findOrCreateUser(db, {
+        externalId: sub,
+        email,
+        maxProjects: DEFAULT_MAX_PROJECTS_PER_USER,
+      })
+      if (isNew) {
+        fireProvisionWebhook({
+          sso_user_id: sub,
+          stift_user_id: userRow.username,
+          email: email || '',
+        }).catch(() => {})
       }
       const user = rowToUser(userRow)
       const sid = createSession(user.username)
