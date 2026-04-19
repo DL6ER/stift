@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.0.0
+
+**New features:**
+- OpenID Connect (OIDC) single sign-on as an optional login mode. Set `OIDC_ENABLED=true` and configure `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` to delegate authentication to an external identity provider. Authorization-code flow with PKCE (S256), signed state/nonce cookies, optional provision webhook.
+
 ## v1.1.0
 
 **New tools:**
