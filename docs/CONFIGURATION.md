@@ -16,6 +16,23 @@ All settings are passed via environment variables to the Docker container.
 | `SPONSOR_URL` | unset | When set AND `ALLOW_REGISTRATION=false`, the sign-in dialog shows a "Become a sponsor" CTA linking here instead of "Registration is disabled" |
 | `CORS_ORIGINS` | unset | Comma-separated allowlist of origins for cross-origin XHR/fetch (e.g. `https://app.example,https://staging.example`). Empty (the default) means **same-origin only**: no CORS headers are set, so cross-origin requests are blocked by the browser. Set explicitly to `*` only if you understand the risk; that echoes any caller's `Origin` back. |
 
+## OpenID Connect (optional)
+
+Set `OIDC_ENABLED=true` to delegate login to an external identity provider. When active, the auth dialog replaces the password form with an SSO button; the label is configurable. Authorization-code flow with PKCE (S256), signed state/nonce/verifier cookies, `openid-client` v5 under the hood.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OIDC_ENABLED` | `false` | Master switch. When `true`, the other `OIDC_*` variables become required. |
+| `OIDC_ISSUER_URL` | unset | Discovery base URL of the identity provider (e.g. `https://auth.example.com`). |
+| `OIDC_CLIENT_ID` | unset | Client identifier registered at the identity provider. |
+| `OIDC_CLIENT_SECRET` | unset | Confidential client secret. Keep out of version control. |
+| `OIDC_REDIRECT_PATH` | `/oidc/callback` | Callback path appended to `PUBLIC_BASE_URL`; must match what is registered at the provider. |
+| `OIDC_LOGIN_LABEL` | `Mit Single Sign-On anmelden` | Text shown on the SSO button in the auth dialog. |
+| `OIDC_PROVISION_WEBHOOK_URL` | unset | When set, a `POST` with `{sso_user_id, stift_user_id, email}` is sent on first-time login of a new user. Failures are queued in an on-disk outbox and retried with exponential backoff. |
+| `OIDC_PROVISION_WEBHOOK_SECRET` | unset | HMAC-SHA256 signing key for the provision webhook. Required if `OIDC_PROVISION_WEBHOOK_URL` is set; sent as `x-stift-oss-signature: sha256=<hex>`. |
+
+When `OIDC_ENABLED=true` and any of `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` is missing, the server aborts at startup.
+
 ## Example: public instance with externally-hosted legal pages and signup
 
 ```bash

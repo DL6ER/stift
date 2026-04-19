@@ -147,7 +147,6 @@ For public-Internet deployments, use the included `docker-compose.proxied.yml`, 
 # 3. Create a .env file:
 cat > .env <<EOF
 STIFT_DOMAIN=stift.example.com
-ADMIN_EMAIL=you@example.com
 ALLOW_REGISTRATION=false
 EOF
 
