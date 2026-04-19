@@ -4,7 +4,7 @@
 // on first mount. Almost all real state lives in the two zustand
 // stores; App.tsx is mostly composition + keybinds.
 
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useState } from 'react'
 import { Toolbar } from './panels/Toolbar'
 import { PropertyPanel } from './panels/PropertyPanel'
 import { StatusBar } from './panels/StatusBar'
@@ -52,6 +52,12 @@ export default function App() {
   const pushHistory = useProjectStore((s) => s.pushHistory)
 
   const fetchConfig = useConfigStore((s) => s.fetchConfig)
+
+  const [toast, setToast] = useState<string | null>(null)
+  const showToast = useCallback((msg: string) => {
+    setToast(msg)
+    setTimeout(() => setToast(null), 1200)
+  }, [])
 
   useClipboardPaste()
 
@@ -120,11 +126,13 @@ export default function App() {
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault()
         undo()
+        showToast('Undo')
         return
       }
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
         e.preventDefault()
         redo()
+        showToast('Redo')
         return
       }
 
@@ -303,11 +311,21 @@ export default function App() {
   // Ctrl+P print
   useEffect(() => {
     const handleBeforePrint = () => {
-      // Deselect to hide transformer handles
       useEditorStore.getState().setSelectedIds([])
     }
     window.addEventListener('beforeprint', handleBeforePrint)
     return () => window.removeEventListener('beforeprint', handleBeforePrint)
+  }, [])
+
+  // Warn before closing with unsaved changes
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (useProjectStore.getState().isDirty) {
+        e.preventDefault()
+      }
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
   }, [])
 
   return (
@@ -319,6 +337,11 @@ export default function App() {
       )}
       <WelcomeOverlay />
       <InviteHandler />
+      {toast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-surface-raised border border-border rounded-lg px-4 py-2 text-sm text-gray-300 shadow-lg pointer-events-none animate-fade-in">
+          {toast}
+        </div>
+      )}
       <ContextMenu />
       <ShortcutPanel />
       <TopBar />

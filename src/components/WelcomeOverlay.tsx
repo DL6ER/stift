@@ -4,7 +4,7 @@ import {
   Square, Circle, Minus, Pencil, PaintBucket, Hash,
   Image, ClipboardPaste, Download, Undo2, ZoomIn, Move,
   X, Keyboard, Layers, ShieldCheck, Lock, Wifi, WifiOff, Code,
-  TextCursorInput, Ruler, Link, Copy,
+  TextCursorInput, Ruler, Link, Copy, Stamp, Pipette, Search,
 } from 'lucide-react'
 import { useProjectStore } from '../stores/projectStore'
 import { examples } from '../lib/examples'
@@ -299,9 +299,12 @@ const steps = [
           <ToolRow icon={PaintBucket} shortcut="X" label="Color Box (redact)" />
           <ToolRow icon={Hash} shortcut="N" label="Counter" />
           <ToolRow icon={Ruler} shortcut="M" label="Dimension / Measure" />
+          <ToolRow icon={Stamp} shortcut="W" label="Stamp / Watermark" />
           <ToolRow icon={Link} shortcut="K" label="Connector" />
+          <ToolRow icon={Pipette} shortcut="I" label="Eyedropper" />
+          <ToolRow icon={Search} shortcut="Z" label="Magnifier (zoom inset)" />
         </div>
-        <p className="text-xs text-gray-600 pt-2">Click and drag on the canvas or on images to draw. Double-click text to re-edit. Switch to <ShortcutBadge>V</ShortcutBadge> to select and move objects.</p>
+        <p className="text-xs text-gray-600 pt-2">Hold <ShortcutBadge>Shift</ShortcutBadge> while drawing for angle snap / square / proportional resize. Scroll the mouse wheel while drawing to adjust stroke width. <ShortcutBadge>Ctrl+G</ShortcutBadge> groups selected annotations.</p>
       </div>
     ),
   },

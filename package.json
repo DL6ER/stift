@@ -1,7 +1,7 @@
 {
   "name": "stift",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.1.0",
   "license": "EUPL-1.2",
   "description": "Image annotation and compositing tool for technical reports",
   "type": "module",
