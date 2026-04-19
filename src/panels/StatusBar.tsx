@@ -185,7 +185,7 @@ export function StatusBar() {
       ))}
       <a href="https://github.com/DL6ER/stift" target="_blank" rel="noopener noreferrer"
         className="text-gray-500 hover:text-gray-300 transition-colors">GitHub</a>
-      <span className="text-gray-600">Stift v0.1.0 -- EUPL-1.2</span>
+      <span className="text-gray-600">Stift v{__STIFT_VERSION__} -- EUPL-1.2</span>
     </div>
   )
 }
