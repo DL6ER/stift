@@ -22,6 +22,4 @@ services:
       - FOOTER_LINKS=${FOOTER_LINKS:-}                      # JSON array of {label,url} rendered in the app footer
       - SPONSOR_URL=${SPONSOR_URL:-}                        # when set + ALLOW_REGISTRATION=false, auth dialog shows a sponsor CTA
       - CORS_ORIGINS=${CORS_ORIGINS:-}                      # comma-separated allowlist; empty = same-origin only
-      - ADMIN_TOKEN=${ADMIN_TOKEN:-}
-      - ADMIN_API_KEY=${ADMIN_API_KEY:-}
     restart: unless-stopped

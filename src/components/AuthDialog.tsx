@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, Shield, AlertTriangle } from 'lucide-react'
+import { X, Shield, AlertTriangle, LogIn } from 'lucide-react'
 import { useAuthStore } from '../stores/authStore'
 import { useConfigStore } from '../stores/configStore'
 
@@ -12,6 +12,8 @@ interface Props {
 export function AuthDialog({ onClose, onSuccess, inviteToken }: Props) {
   const registrationEnabled = useConfigStore((s) => s.registrationEnabled)
   const sponsorUrl = useConfigStore((s) => s.sponsorUrl)
+  const oidcEnabled = useConfigStore((s) => s.oidcEnabled)
+  const oidcLoginLabel = useConfigStore((s) => s.oidcLoginLabel)
   const [mode, setMode] = useState<'login' | 'register'>(inviteToken ? 'register' : 'login')
   // With an invite the user can either create a new account OR sign in
   // to apply the invite to an existing one. Without an invite, fall
@@ -68,6 +70,11 @@ export function AuthDialog({ onClose, onSuccess, inviteToken }: Props) {
     }
   }
 
+  // When SSO is active and no invite token is present, show only the SSO
+  // button. Invite-based registration still uses the password form because
+  // the invite flow requires a locally derived encryption key.
+  const showSsoOnly = oidcEnabled && !inviteToken
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-surface-raised border border-border rounded-xl shadow-2xl w-[420px]" onClick={(e) => e.stopPropagation()}>
@@ -79,112 +86,162 @@ export function AuthDialog({ onClose, onSuccess, inviteToken }: Props) {
           <button onClick={onClose} className="text-gray-500 hover:text-gray-300"><X size={18} /></button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 pb-6 space-y-4">
-          {inviteToken && (
-            <>
-              <div className="flex justify-center">
-                <div className="inline-flex bg-surface-overlay border border-border rounded-md p-0.5 text-xs">
-                  <button type="button" onClick={() => setMode('register')}
-                    className={`px-3 py-1.5 rounded transition-colors ${effectiveMode === 'register' ? 'bg-accent text-white' : 'text-gray-400 hover:text-white'}`}>
-                    New account
-                  </button>
-                  <button type="button" onClick={() => setMode('login')}
-                    className={`px-3 py-1.5 rounded transition-colors ${effectiveMode === 'login' ? 'bg-accent text-white' : 'text-gray-400 hover:text-white'}`}>
-                    Existing account
-                  </button>
-                </div>
-              </div>
-              <div className="bg-indigo-950/30 border border-indigo-800/40 rounded-lg p-3 text-xs text-indigo-300">
-                {effectiveMode === 'register'
-                  ? 'Create a new Stift account with this invitation. Pick any username and a strong password; your encryption key is derived from both.'
-                  : 'Already have a Stift account? Sign in to apply this invitation to your existing account and upgrade your storage quota.'}
-              </div>
-            </>
-          )}
-          <div className="bg-emerald-950/30 border border-emerald-800/40 rounded-lg p-3 text-xs text-emerald-400/80">
-            <div className="flex gap-2">
-              <Shield size={14} className="shrink-0 mt-0.5" />
-              <div>
-                <strong className="text-emerald-300">End-to-end encrypted</strong>
-                <p className="mt-1">Your data is encrypted with your personal key before it is uploaded. The server cannot read your projects.</p>
-              </div>
-            </div>
-          </div>
-
-          {effectiveMode === 'register' && (
-            <div className="bg-amber-950/30 border border-amber-800/40 rounded-lg p-3 text-xs text-amber-400/80">
+        {showSsoOnly ? (
+          <div className="px-6 pb-6 space-y-4">
+            <div className="bg-emerald-950/30 border border-emerald-800/40 rounded-lg p-3 text-xs text-emerald-400/80">
               <div className="flex gap-2">
-                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                <Shield size={14} className="shrink-0 mt-0.5" />
                 <div>
-                  <strong className="text-amber-300">No password recovery</strong>
-                  <p className="mt-1">Your encryption key is inextricably linked to your password. If you lose the password, your server-stored data cannot be recovered by anyone, including us. Keep your password safe.</p>
+                  <strong className="text-emerald-300">End-to-end encrypted</strong>
+                  <p className="mt-1">Your data is encrypted with your personal key before it is uploaded. The server cannot read your projects.</p>
                 </div>
               </div>
             </div>
-          )}
-
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs text-gray-400">Username</label>
-              {effectiveMode === 'register' && (
-                <button type="button" onClick={() => {
-                  const adj = ['swift','bright','calm','bold','keen','wise','fair','true','deep','vast']
-                  const noun = ['fox','owl','hawk','wolf','bear','lynx','elk','hare','crow','wren']
-                  const num = Math.floor(Math.random() * 900) + 100
-                  setUsername(`${adj[Math.floor(Math.random()*adj.length)]}-${noun[Math.floor(Math.random()*noun.length)]}-${num}`)
-                }} className="text-[10px] text-accent hover:underline">Generate random</button>
-              )}
+            <div className="bg-blue-950/30 border border-blue-800/40 rounded-lg p-3 text-xs text-blue-300/80">
+              <div className="flex gap-2">
+                <LogIn size={14} className="shrink-0 mt-0.5" />
+                <div>
+                  <strong className="text-blue-200">Single Sign-On</strong>
+                  <p className="mt-1">Sie werden zum Anmelde-Dienst Ihrer Organisation weitergeleitet.</p>
+                </div>
+              </div>
             </div>
-            <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} required autoFocus
-              placeholder={effectiveMode === 'register' ? 'Choose a username or generate one' : 'Your username'}
-              className="w-full bg-surface-overlay border border-border rounded px-3 py-2 text-sm text-gray-200 outline-none focus:border-accent" />
+            <a
+              href="/oidc/login"
+              className="flex items-center justify-center gap-2 w-full py-2 bg-accent hover:bg-accent-hover text-white rounded-md font-medium text-sm"
+            >
+              <LogIn size={16} />
+              {oidcLoginLabel}
+            </a>
           </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="px-6 pb-6 space-y-4">
+            {inviteToken && (
+              <>
+                <div className="flex justify-center">
+                  <div className="inline-flex bg-surface-overlay border border-border rounded-md p-0.5 text-xs">
+                    <button type="button" onClick={() => setMode('register')}
+                      className={`px-3 py-1.5 rounded transition-colors ${effectiveMode === 'register' ? 'bg-accent text-white' : 'text-gray-400 hover:text-white'}`}>
+                      New account
+                    </button>
+                    <button type="button" onClick={() => setMode('login')}
+                      className={`px-3 py-1.5 rounded transition-colors ${effectiveMode === 'login' ? 'bg-accent text-white' : 'text-gray-400 hover:text-white'}`}>
+                      Existing account
+                    </button>
+                  </div>
+                </div>
+                <div className="bg-indigo-950/30 border border-indigo-800/40 rounded-lg p-3 text-xs text-indigo-300">
+                  {effectiveMode === 'register'
+                    ? 'Create a new Stift account with this invitation. Pick any username and a strong password; your encryption key is derived from both.'
+                    : 'Already have a Stift account? Sign in to apply this invitation to your existing account and upgrade your storage quota.'}
+                </div>
+              </>
+            )}
+            <div className="bg-emerald-950/30 border border-emerald-800/40 rounded-lg p-3 text-xs text-emerald-400/80">
+              <div className="flex gap-2">
+                <Shield size={14} className="shrink-0 mt-0.5" />
+                <div>
+                  <strong className="text-emerald-300">End-to-end encrypted</strong>
+                  <p className="mt-1">Your data is encrypted with your personal key before it is uploaded. The server cannot read your projects.</p>
+                </div>
+              </div>
+            </div>
 
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">Password</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8}
-              className="w-full bg-surface-overlay border border-border rounded px-3 py-2 text-sm text-gray-200 outline-none focus:border-accent" />
-          </div>
+            {effectiveMode === 'register' && (
+              <div className="bg-amber-950/30 border border-amber-800/40 rounded-lg p-3 text-xs text-amber-400/80">
+                <div className="flex gap-2">
+                  <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="text-amber-300">Kein Reset möglich</strong>
+                    <p className="mt-1">
+                      Dieses Kennwort ist NICHT Ihr Anmelde-Kennwort eines anderen Dienstes.
+                      Es ist eine zusätzliche Zero-Knowledge-Schicht für Ihre Projekt-Daten — Ihr
+                      Verschlüsselungsschlüssel wird direkt aus diesem Kennwort abgeleitet.
+                    </p>
+                    <p className="mt-1">
+                      Wer das Kennwort verliert, verliert den Zugang zu allen gespeicherten
+                      Projekten — ohne Ausnahme. Bewahren Sie es sicher auf, idealerweise in
+                      einem Passwort-Manager.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
-          {effectiveMode === 'register' && (
+            {effectiveMode === 'login' && (
+              <div className="bg-sky-950/30 border border-sky-800/40 rounded-lg p-3 text-xs text-sky-400/80">
+                <div className="flex gap-2">
+                  <Shield size={14} className="shrink-0 mt-0.5" />
+                  <div>
+                    <p>Dieses Kennwort verbleibt auf Ihrem Gerät und wird nie an den Server gesendet. Es wird lokal zur Entschlüsselung Ihrer Projekt-Daten verwendet.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div>
-              <label className="block text-xs text-gray-400 mb-1">Confirm Password</label>
-              <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs text-gray-400">Username</label>
+                {effectiveMode === 'register' && (
+                  <button type="button" onClick={() => {
+                    const adj = ['swift','bright','calm','bold','keen','wise','fair','true','deep','vast']
+                    const noun = ['fox','owl','hawk','wolf','bear','lynx','elk','hare','crow','wren']
+                    const num = Math.floor(Math.random() * 900) + 100
+                    setUsername(`${adj[Math.floor(Math.random()*adj.length)]}-${noun[Math.floor(Math.random()*noun.length)]}-${num}`)
+                  }} className="text-[10px] text-accent hover:underline">Generate random</button>
+                )}
+              </div>
+              <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} required autoFocus
+                placeholder={effectiveMode === 'register' ? 'Choose a username or generate one' : 'Your username'}
                 className="w-full bg-surface-overlay border border-border rounded px-3 py-2 text-sm text-gray-200 outline-none focus:border-accent" />
             </div>
-          )}
 
-          {error && <p className="text-red-400 text-xs">{error}</p>}
-
-          <button type="submit" disabled={loading}
-            className="w-full py-2 bg-accent hover:bg-accent-hover text-white rounded-md font-medium text-sm disabled:opacity-50">
-            {loading ? 'Please wait...' : effectiveMode === 'login' ? 'Sign In' : 'Create Account'}
-          </button>
-
-          {inviteToken ? null : registrationEnabled ? (
-            <p className="text-center text-xs text-gray-500">
-              {effectiveMode === 'login' ? (
-                <>No account? <button type="button" onClick={() => setMode('register')} className="text-accent hover:underline">Create one</button></>
-              ) : (
-                <>Already have an account? <button type="button" onClick={() => setMode('login')} className="text-accent hover:underline">Sign in</button></>
-              )}
-            </p>
-          ) : sponsorUrl ? (
-            <div className="text-center text-xs text-gray-500 space-y-1">
-              <p>New here? Cloud storage is invite-only on this instance.</p>
-              <a
-                href={sponsorUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-block text-accent hover:underline font-medium"
-              >
-                Become a sponsor →
-              </a>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Password</label>
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8}
+                className="w-full bg-surface-overlay border border-border rounded px-3 py-2 text-sm text-gray-200 outline-none focus:border-accent" />
             </div>
-          ) : (
-            <p className="text-center text-xs text-gray-500">Registration is disabled on this instance.</p>
-          )}
-        </form>
+
+            {effectiveMode === 'register' && (
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Confirm Password</label>
+                <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required
+                  className="w-full bg-surface-overlay border border-border rounded px-3 py-2 text-sm text-gray-200 outline-none focus:border-accent" />
+              </div>
+            )}
+
+            {error && <p className="text-red-400 text-xs">{error}</p>}
+
+            <button type="submit" disabled={loading}
+              className="w-full py-2 bg-accent hover:bg-accent-hover text-white rounded-md font-medium text-sm disabled:opacity-50">
+              {loading ? 'Please wait...' : effectiveMode === 'login' ? 'Sign In' : 'Create Account'}
+            </button>
+
+            {inviteToken ? null : registrationEnabled ? (
+              <p className="text-center text-xs text-gray-500">
+                {effectiveMode === 'login' ? (
+                  <>No account? <button type="button" onClick={() => setMode('register')} className="text-accent hover:underline">Create one</button></>
+                ) : (
+                  <>Already have an account? <button type="button" onClick={() => setMode('login')} className="text-accent hover:underline">Sign in</button></>
+                )}
+              </p>
+            ) : sponsorUrl ? (
+              <div className="text-center text-xs text-gray-500 space-y-1">
+                <p>New here? Cloud storage is invite-only on this instance.</p>
+                <a
+                  href={sponsorUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block text-accent hover:underline font-medium"
+                >
+                  Become a sponsor →
+                </a>
+              </div>
+            ) : (
+              <p className="text-center text-xs text-gray-500">Registration is disabled on this instance.</p>
+            )}
+          </form>
+        )}
       </div>
     </div>
   )

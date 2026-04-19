@@ -148,7 +148,6 @@ For public-Internet deployments, use the included `docker-compose.proxied.yml`, 
 cat > .env <<EOF
 STIFT_DOMAIN=stift.example.com
 ADMIN_EMAIL=you@example.com
-ADMIN_TOKEN=$(openssl rand -base64 48)
 ALLOW_REGISTRATION=false
 EOF
 
@@ -194,7 +193,7 @@ The full documentation is split across topic-specific files in [`docs/`](docs/):
 |------|-------|
 | [**SECURITY.md**](docs/SECURITY.md) | Privacy model, end-to-end encryption design, post-quantum analysis, comparison to audited password managers |
 | [**ARCHITECTURE.md**](docs/ARCHITECTURE.md) | Component diagram, SQLite + filesystem storage layout, `users` table schema |
-| [**CONFIGURATION.md**](docs/CONFIGURATION.md) | All environment variables, locking down a public instance, admin API, invitation tokens, dev mode |
+| [**CONFIGURATION.md**](docs/CONFIGURATION.md) | All environment variables, locking down a public instance, invitation tokens, dev mode |
 | [**DEVELOPMENT.md**](docs/DEVELOPMENT.md) | Local dev, testing (unit / visual / E2E), built-in examples |
 | [**KEYBOARD.md**](docs/KEYBOARD.md) | All keyboard shortcuts |
 

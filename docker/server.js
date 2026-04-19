@@ -1,27 +1,13 @@
 import { createServer } from 'http'
 import { readdir, readFile, writeFile, unlink, mkdir, rename } from 'fs/promises'
 import { join } from 'path'
-import { randomUUID, randomBytes, timingSafeEqual } from 'crypto'
+import { randomUUID, randomBytes, timingSafeEqual, createHmac } from 'crypto'
 import Database from 'better-sqlite3'
+import { Issuer, generators } from 'openid-client'
 
 // Server configuration. Adjust as needed for your deployment.
 const DATA_DIR = process.env.DATA_DIR || '/data'
 const PORT = 3001
-// Admin token for privileged operations (user management, etc). Set this to a
-// long random string in production, and keep it secret: anyone with this token
-// can manage users and delete projects. If not set, we generate a random one
-// that changes on each server start -- the operator needs to see that value
-// once to be able to use the admin API, so we print it on startup. When the
-// operator HAS set the env var, we never log the value: production logs
-// often end up in third-party aggregators and the token doesn't belong there.
-const ADMIN_TOKEN_FROM_ENV = !!process.env.ADMIN_TOKEN
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || randomUUID()
-// Optional second authentication factor for /api/admin/* endpoints. When set,
-// requests must present BOTH X-Admin-Token AND X-Admin-Api-Key. Leaking one
-// without the other doesn't grant access. Defaults to unset for backwards
-// compatibility; turn it on by sharing the same value with whatever external
-// system calls the admin API.
-const ADMIN_API_KEY = process.env.ADMIN_API_KEY || ''
 // When true, the server will gzip project data on upload and decompress on
 // download. This can save bandwidth and storage at the cost of some (client!)
 // CPU time. Adjust based on your typical project sizes and server resources.
@@ -73,6 +59,43 @@ if (process.env.FOOTER_LINKS) {
 // the operator chooses) so they can request an invitation.
 const SPONSOR_URL = process.env.SPONSOR_URL || ''
 
+// ── Optional OIDC / Single Sign-On ────────────────────────────────────────
+//
+// Set OIDC_ENABLED=true to activate the SSO flow. When enabled, the auth
+// dialog shows a provider-neutral SSO button whose label is controlled by
+// OIDC_LOGIN_LABEL (defaults to "Mit Single Sign-On anmelden"). Password-
+// based login is hidden when SSO is active.
+//
+// Required when OIDC_ENABLED=true:
+//   OIDC_ISSUER_URL     -- discovery base URL of the identity provider
+//   OIDC_CLIENT_ID      -- client ID registered at the identity provider
+//   OIDC_CLIENT_SECRET  -- client secret (confidential client flow)
+//
+// Optional:
+//   OIDC_REDIRECT_PATH        -- callback path (default /oidc/callback)
+//   OIDC_LOGIN_LABEL          -- button label shown in the auth dialog
+//   OIDC_PROVISION_WEBHOOK_URL    -- POST target when a new user is created via SSO
+//   OIDC_PROVISION_WEBHOOK_SECRET -- HMAC-SHA256 signing key for the webhook
+const OIDC_ENABLED = (process.env.OIDC_ENABLED || '').toLowerCase() === 'true'
+const OIDC_ISSUER_URL = process.env.OIDC_ISSUER_URL || ''
+const OIDC_CLIENT_ID = process.env.OIDC_CLIENT_ID || ''
+const OIDC_CLIENT_SECRET = process.env.OIDC_CLIENT_SECRET || ''
+const OIDC_REDIRECT_PATH = (process.env.OIDC_REDIRECT_PATH || '/oidc/callback').replace(/\/$/, '')
+const OIDC_LOGIN_LABEL = process.env.OIDC_LOGIN_LABEL || 'Mit Single Sign-On anmelden'
+const OIDC_PROVISION_WEBHOOK_URL = process.env.OIDC_PROVISION_WEBHOOK_URL || ''
+const OIDC_PROVISION_WEBHOOK_SECRET = process.env.OIDC_PROVISION_WEBHOOK_SECRET || ''
+
+if (OIDC_ENABLED) {
+  const missing = []
+  if (!OIDC_ISSUER_URL) missing.push('OIDC_ISSUER_URL')
+  if (!OIDC_CLIENT_ID) missing.push('OIDC_CLIENT_ID')
+  if (!OIDC_CLIENT_SECRET) missing.push('OIDC_CLIENT_SECRET')
+  if (missing.length > 0) {
+    console.error(`OIDC_ENABLED=true but required variable(s) missing: ${missing.join(', ')}`)
+    process.exit(1)
+  }
+}
+
 // CORS allowlist. Comma-separated list of allowed origin values for the
 // `Access-Control-Allow-Origin` response header on cross-origin XHR /
 // fetch requests. The default is empty (same-origin only), which is
@@ -119,12 +142,43 @@ db.exec(`
     created_at         TEXT NOT NULL
   );
 `)
-await migrateLegacyUserFiles()
-if (ADMIN_TOKEN_FROM_ENV) {
-  console.log('Admin token: (from env, not echoed)')
-} else {
-  console.log(`Admin token: ${ADMIN_TOKEN}  (auto-generated; set ADMIN_TOKEN env var to override)`)
+
+// Idempotent schema additions -- safe to run on every boot.
+// The external_oidc_sub column links a local user account to an OIDC
+// identity by subject claim. NULL on all pre-existing rows so existing
+// accounts are unaffected. The partial unique index (WHERE NOT NULL)
+// enforces one account per OIDC subject while allowing many NULL values.
+{
+  const existingCols = new Set(db.prepare("PRAGMA table_info(users)").all().map(r => r.name))
+  if (!existingCols.has('external_oidc_sub')) {
+    db.exec('ALTER TABLE users ADD COLUMN external_oidc_sub TEXT')
+  }
+  if (!existingCols.has('email')) {
+    db.exec('ALTER TABLE users ADD COLUMN email TEXT')
+  }
 }
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_oidc_sub
+    ON users(external_oidc_sub) WHERE external_oidc_sub IS NOT NULL;
+`)
+
+// Outbox for OIDC provision webhooks: guarantees at-least-once delivery
+// even when the receiver is unreachable on the first attempt.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS oidc_webhook_outbox (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    payload        TEXT    NOT NULL,
+    signature      TEXT    NOT NULL,
+    attempts       INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at INTEGER NOT NULL,
+    created_at     INTEGER NOT NULL,
+    delivered_at   INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_webhook_outbox_pending
+    ON oidc_webhook_outbox(next_attempt_at) WHERE delivered_at IS NULL;
+`)
+
+await migrateLegacyUserFiles()
 console.log(`Default max projects per user: ${DEFAULT_MAX_PROJECTS_PER_USER}`)
 console.log(`Registration: ${ALLOW_REGISTRATION ? 'open' : 'disabled'}`)
 if (DEV_MODE) console.log('*** DEV_MODE enabled: verbose request logging is on ***')
@@ -133,19 +187,166 @@ const stmtGetUser = db.prepare('SELECT * FROM users WHERE username = ?')
 const stmtInsertUser = db.prepare(
   'INSERT INTO users (username, auth_token, role, max_projects, can_share_projects, created_at) VALUES (?, ?, ?, ?, ?, ?)'
 )
-const stmtUpdateRole = db.prepare('UPDATE users SET role = ? WHERE username = ?')
-const stmtUpdateMaxProjects = db.prepare('UPDATE users SET max_projects = ? WHERE username = ?')
-const stmtUpdateCanShare = db.prepare('UPDATE users SET can_share_projects = ? WHERE username = ?')
-const stmtDeleteUser = db.prepare('DELETE FROM users WHERE username = ?')
-const stmtAllUsers = db.prepare('SELECT * FROM users ORDER BY created_at ASC')
-const stmtInsertInvite = db.prepare(
-  'INSERT INTO invitations (token, max_projects, can_share_projects, expires_at, created_at) VALUES (?, ?, ?, ?, ?)'
-)
 const stmtGetInvite = db.prepare('SELECT * FROM invitations WHERE token = ?')
 const stmtConsumeInvite = db.prepare(
   'UPDATE invitations SET consumed_at = ?, consumed_by = ? WHERE token = ? AND consumed_at IS NULL'
 )
-const stmtListInvites = db.prepare('SELECT * FROM invitations ORDER BY created_at DESC LIMIT 200')
+const stmtGetUserByOidcSub = db.prepare('SELECT * FROM users WHERE external_oidc_sub = ?')
+const stmtGetUserByEmail = db.prepare('SELECT * FROM users WHERE email = ? LIMIT 1')
+const stmtSetOidcSub = db.prepare('UPDATE users SET external_oidc_sub = ?, email = ? WHERE username = ?')
+const stmtInsertOidcUser = db.prepare(
+  'INSERT INTO users (username, auth_token, role, max_projects, can_share_projects, created_at, external_oidc_sub, email) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+)
+
+// ── OIDC client (discovered lazily on first use) ──────────────────────────
+let _oidcClient = null
+async function getOidcClient(redirectUri) {
+  if (_oidcClient) return _oidcClient
+  const issuer = await Issuer.discover(OIDC_ISSUER_URL)
+  _oidcClient = new issuer.Client({
+    client_id: OIDC_CLIENT_ID,
+    client_secret: OIDC_CLIENT_SECRET,
+    redirect_uris: [redirectUri],
+    response_types: ['code'],
+  })
+  return _oidcClient
+}
+
+// Signed cookie helpers (no external dep -- manual HMAC-SHA256 signing).
+// Cookie format: <base64url(value)>.<base64url(sig)>
+const COOKIE_SECRET = process.env.SESSION_SECRET || randomBytes(32).toString('hex')
+function signValue(val) {
+  const b = Buffer.from(val).toString('base64url')
+  const sig = createHmac('sha256', COOKIE_SECRET).update(b).digest('base64url')
+  return `${b}.${sig}`
+}
+function unsignValue(signed) {
+  if (typeof signed !== 'string') return null
+  const dot = signed.lastIndexOf('.')
+  if (dot === -1) return null
+  const b = signed.slice(0, dot)
+  const sig = signed.slice(dot + 1)
+  const expected = createHmac('sha256', COOKIE_SECRET).update(b).digest('base64url')
+  const expBuf = Buffer.from(expected)
+  const sigBuf = Buffer.from(sig)
+  if (expBuf.length !== sigBuf.length) return null
+  if (!timingSafeEqual(expBuf, sigBuf)) return null
+  return Buffer.from(b, 'base64url').toString()
+}
+
+function parseCookies(req) {
+  const hdr = req.headers.cookie || ''
+  const out = {}
+  for (const part of hdr.split(';')) {
+    const [k, ...rest] = part.trim().split('=')
+    if (k) out[k.trim()] = decodeURIComponent(rest.join('='))
+  }
+  return out
+}
+
+function setCookie(res, name, value, opts = {}) {
+  const maxAge = opts.maxAge ?? 600 // 10 min default for OIDC flow cookies
+  let h = `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`
+  if (opts.secure) h += '; Secure'
+  const existing = res.getHeader('Set-Cookie')
+  const arr = existing ? (Array.isArray(existing) ? existing : [existing]) : []
+  arr.push(h)
+  res.setHeader('Set-Cookie', arr)
+}
+
+function clearCookie(res, name) {
+  const arr = (res.getHeader('Set-Cookie') || [])
+  const existing = Array.isArray(arr) ? arr : (arr ? [arr] : [])
+  existing.push(`${name}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`)
+  res.setHeader('Set-Cookie', existing)
+}
+
+// Simple session store: in-memory map keyed by session id (UUID).
+// Each session entry: { username, createdAt }. Not persisted -- sessions
+// are invalidated on restart. For the OIDC flow this is intentional:
+// the operator can add a persistent session store later if needed.
+const sessions = new Map()
+const SESSION_COOKIE = 'stift_sid'
+const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000 // 24h
+
+function createSession(username) {
+  const sid = randomUUID()
+  sessions.set(sid, { username, createdAt: Date.now() })
+  return sid
+}
+function getSession(req) {
+  const cookies = parseCookies(req)
+  const raw = cookies[SESSION_COOKIE]
+  if (!raw) return null
+  const sid = unsignValue(raw)
+  if (!sid) return null
+  const sess = sessions.get(sid)
+  if (!sess) return null
+  if (Date.now() - sess.createdAt > SESSION_MAX_AGE_MS) {
+    sessions.delete(sid)
+    return null
+  }
+  return { sid, ...sess }
+}
+
+// Provision webhook: writes the entry to the outbox first, then immediately
+// invokes the retry worker. No event is lost even if the receiver is
+// unreachable on the first attempt.
+async function fireProvisionWebhook(payload) {
+  if (!OIDC_PROVISION_WEBHOOK_URL) return
+  const body = JSON.stringify(payload)
+  const sig = createHmac('sha256', OIDC_PROVISION_WEBHOOK_SECRET).update(body).digest('hex')
+  const now = Math.floor(Date.now() / 1000)
+  db.prepare(
+    'INSERT INTO oidc_webhook_outbox (payload, signature, attempts, next_attempt_at, created_at) VALUES (?, ?, 0, ?, ?)'
+  ).run(body, sig, now, now)
+  // Fire once immediately without blocking the response.
+  retryOidcWebhookOutbox().catch(() => {})
+}
+
+// Retry worker: processes all due outbox entries.
+// Exponential backoff: min(2^attempts * 30, 3600) seconds.
+// After 10 attempts the entry is considered permanently failed
+// (attempts >= 10, delivered_at stays NULL) and is not retried again.
+async function retryOidcWebhookOutbox() {
+  if (!OIDC_PROVISION_WEBHOOK_URL) return
+  const now = Math.floor(Date.now() / 1000)
+  const rows = db.prepare(
+    'SELECT * FROM oidc_webhook_outbox WHERE delivered_at IS NULL AND next_attempt_at <= ? AND attempts < 10'
+  ).all(now)
+  for (const row of rows) {
+    try {
+      const resp = await fetch(OIDC_PROVISION_WEBHOOK_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-stift-oss-signature': `sha256=${row.signature}`,
+        },
+        body: row.payload,
+      })
+      if (resp.ok) {
+        db.prepare('UPDATE oidc_webhook_outbox SET delivered_at = ? WHERE id = ?')
+          .run(Math.floor(Date.now() / 1000), row.id)
+      } else {
+        throw new Error(`HTTP ${resp.status}`)
+      }
+    } catch (e) {
+      const attempts = row.attempts + 1
+      const backoff = Math.min(Math.pow(2, attempts) * 30, 3600)
+      const nextAttempt = Math.floor(Date.now() / 1000) + backoff
+      db.prepare('UPDATE oidc_webhook_outbox SET attempts = ?, next_attempt_at = ? WHERE id = ?')
+        .run(attempts, nextAttempt, row.id)
+      if (attempts >= 10) {
+        console.error(`[oidc] provision webhook permanently failed after ${attempts} attempts (outbox id=${row.id}):`, e.message)
+      } else {
+        console.warn(`[oidc] provision webhook attempt ${attempts} failed, next in ${backoff}s (outbox id=${row.id}):`, e.message)
+      }
+    }
+  }
+}
+
+// Background worker: retry due outbox entries every 60 seconds.
+setInterval(() => { retryOidcWebhookOutbox().catch(() => {}) }, 60_000)
 
 // Atomic invite consumption: validate, create user, mark invite consumed.
 // Throws an Error with .code on any failure so the route can map to HTTP.
@@ -177,6 +378,8 @@ function rowToUser(row) {
     maxProjects: row.max_projects,
     canShareProjects: !!row.can_share_projects,
     createdAt: row.created_at,
+    externalOidcSub: row.external_oidc_sub ?? null,
+    email: row.email ?? null,
   }
 }
 
@@ -273,15 +476,6 @@ function safeEqual(a, b) {
   const bb = Buffer.from(b)
   if (ab.length !== bb.length) return false
   return timingSafeEqual(ab, bb)
-}
-
-// True iff this request is authorized to call /api/admin/*. Always requires
-// X-Admin-Token. When ADMIN_API_KEY is set in the environment, additionally
-// requires X-Admin-Api-Key as a defense-in-depth layer for token leakage.
-function isAdminRequest(req) {
-  if (!safeEqual(req.headers['x-admin-token'] || '', ADMIN_TOKEN)) return false
-  if (ADMIN_API_KEY && !safeEqual(req.headers['x-admin-api-key'] || '', ADMIN_API_KEY)) return false
-  return true
 }
 
 // Rate limiting for unauthenticated endpoints.
@@ -400,6 +594,146 @@ const server = createServer(async (req, res) => {
         devMode: DEV_MODE,
         footerLinks: FOOTER_LINKS,
         sponsorUrl: SPONSOR_URL || null,
+        oidcEnabled: OIDC_ENABLED,
+        oidcLoginLabel: OIDC_ENABLED ? OIDC_LOGIN_LABEL : null,
+      })
+    }
+
+    // OIDC / SSO routes. Only active when OIDC_ENABLED=true.
+    // /oidc/login  -- redirects the browser to the identity provider
+    // /oidc/callback -- receives the authorization code, validates it,
+    //                   finds or creates the local user, and redirects
+    //                   the browser back to the SPA root (/).
+    if (OIDC_ENABLED && path === '/oidc/login' && req.method === 'GET') {
+      const proto = req.headers['x-forwarded-proto'] || 'http'
+      const host = req.headers['x-forwarded-host'] || req.headers.host || `localhost:${PORT}`
+      const redirectUri = `${proto}://${host}${OIDC_REDIRECT_PATH}`
+      const client = await getOidcClient(redirectUri)
+      const state = generators.state()
+      const nonce = generators.nonce()
+      const codeVerifier = generators.codeVerifier()
+      const codeChallenge = generators.codeChallenge(codeVerifier)
+      const secure = proto === 'https'
+      setCookie(res, 'oidc_state', signValue(state), { maxAge: 600, secure })
+      setCookie(res, 'oidc_nonce', signValue(nonce), { maxAge: 600, secure })
+      setCookie(res, 'oidc_verifier', signValue(codeVerifier), { maxAge: 600, secure })
+      const authUrl = client.authorizationUrl({
+        scope: 'openid email profile',
+        state,
+        nonce,
+        code_challenge: codeChallenge,
+        code_challenge_method: 'S256',
+        redirect_uri: redirectUri,
+      })
+      res.writeHead(302, { Location: authUrl })
+      res.end()
+      return
+    }
+
+    if (OIDC_ENABLED && path === OIDC_REDIRECT_PATH && req.method === 'GET') {
+      const proto = req.headers['x-forwarded-proto'] || 'http'
+      const host = req.headers['x-forwarded-host'] || req.headers.host || `localhost:${PORT}`
+      const redirectUri = `${proto}://${host}${OIDC_REDIRECT_PATH}`
+      const client = await getOidcClient(redirectUri)
+      const cookies = parseCookies(req)
+      const state = unsignValue(cookies['oidc_state'] || '')
+      const nonce = unsignValue(cookies['oidc_nonce'] || '')
+      const codeVerifier = unsignValue(cookies['oidc_verifier'] || '')
+      clearCookie(res, 'oidc_state')
+      clearCookie(res, 'oidc_nonce')
+      clearCookie(res, 'oidc_verifier')
+      if (!state || !nonce || !codeVerifier) {
+        res.writeHead(400, { 'Content-Type': 'text/plain' })
+        res.end('Ungültige oder abgelaufene Anmelde-Sitzung. Bitte erneut versuchen.')
+        return
+      }
+      let tokenSet
+      try {
+        const params = client.callbackParams(req.url)
+        tokenSet = await client.callback(redirectUri, params, {
+          state,
+          nonce,
+          code_verifier: codeVerifier,
+        })
+      } catch (e) {
+        console.error('[oidc] callback error:', e.message)
+        res.writeHead(302, { Location: '/?oidc_error=callback_failed' })
+        res.end()
+        return
+      }
+      const claims = tokenSet.claims()
+      const sub = claims.sub
+      const email = (claims.email || '').toLowerCase().trim() || null
+      if (!sub) {
+        res.writeHead(302, { Location: '/?oidc_error=no_sub' })
+        res.end()
+        return
+      }
+      // Find existing user by OIDC subject, or by email (link existing account).
+      let userRow = stmtGetUserByOidcSub.get(sub)
+      let isNew = false
+      if (!userRow && email) {
+        userRow = stmtGetUserByEmail.get(email)
+        if (userRow) {
+          // Link existing account to this OIDC subject.
+          stmtSetOidcSub.run(sub, email, userRow.username)
+          userRow = stmtGetUser.get(userRow.username)
+        }
+      }
+      if (!userRow) {
+        // Provision a new account. Derive a stable username from the first 12
+        // hex characters of the SHA-256 hash of the subject claim.
+        const { createHash } = await import('crypto')
+        const base = createHash('sha256').update(sub).digest('hex').slice(0, 12)
+        let candidate = `sso-${base}`
+        // Avoid collisions (unlikely but possible).
+        let suffix = 0
+        while (stmtGetUser.get(candidate)) {
+          suffix++
+          candidate = `sso-${base}-${suffix}`
+        }
+        const authToken = randomBytes(32).toString('hex')
+        const nowTs = new Date().toISOString()
+        // UPSERT on external_oidc_sub: race-safe for concurrent callbacks for
+        // the same sub. ON CONFLICT updates the email address and leaves
+        // everything else unchanged so the second parallel request succeeds.
+        db.prepare(`
+          INSERT INTO users (username, auth_token, role, max_projects, can_share_projects, created_at, external_oidc_sub, email)
+          VALUES (?, ?, 'user', ?, 1, ?, ?, ?)
+          ON CONFLICT(external_oidc_sub) DO UPDATE SET email = excluded.email
+        `).run(candidate, authToken, DEFAULT_MAX_PROJECTS_PER_USER, nowTs, sub, email)
+        userRow = stmtGetUserByOidcSub.get(sub)
+        // isNew: true only if we actually inserted the new row.
+        isNew = userRow?.username === candidate
+        if (isNew) {
+          fireProvisionWebhook({
+            sso_user_id: sub,
+            stift_user_id: candidate,
+            email: email || '',
+          }).catch(() => {})
+        }
+      }
+      const user = rowToUser(userRow)
+      const sid = createSession(user.username)
+      const secure = proto === 'https'
+      setCookie(res, SESSION_COOKIE, signValue(sid), { maxAge: SESSION_MAX_AGE_MS / 1000, secure })
+      res.writeHead(302, { Location: '/' })
+      res.end()
+      return
+    }
+
+    // OIDC session check -- lets the SPA know if there is an active SSO session.
+    if (OIDC_ENABLED && path === '/api/oidc/session' && req.method === 'GET') {
+      const sess = getSession(req)
+      if (!sess) return json(res, { authenticated: false })
+      const user = getUser(sess.username)
+      if (!user) return json(res, { authenticated: false })
+      return json(res, {
+        authenticated: true,
+        username: user.username,
+        authToken: user.authToken,
+        maxProjects: user.maxProjects,
+        canShareProjects: user.canShareProjects,
       })
     }
 
@@ -425,8 +759,7 @@ const server = createServer(async (req, res) => {
 
     // Consume an invitation: creates a new user account regardless of
     // ALLOW_REGISTRATION. The invite *is* the authorization to create an
-    // account, and the closed admin (or any external system holding the
-    // ADMIN_TOKEN) is what issued it.
+    // account; invites are issued out-of-band by whoever manages the instance.
     if (path === '/api/auth/register-with-invite' && req.method === 'POST') {
       const { username, authToken, invite } = await parseBody(req)
       if (!username || !authToken || !invite) {
@@ -671,88 +1004,6 @@ const server = createServer(async (req, res) => {
       if (!data.members?.find(m => m.username === user.username && m.role === 'owner')) return json(res, { error: 'Owner access required' }, 403)
       data.members = data.members.filter(m => m.username !== decodeURIComponent(rmMemberMatch[2]))
       await writeFile(join(DATA_DIR, 'shared', `${rmMemberMatch[1]}.json`), JSON.stringify(data))
-      return json(res, { ok: true })
-    }
-
-    // Admin routes.
-    const isAdmin = isAdminRequest(req)
-    if (path === '/api/admin/users' && req.method === 'GET') {
-      if (!isAdmin) return json(res, { error: 'Admin access required' }, 403)
-      const rows = stmtAllUsers.all()
-      const users = []
-      for (const row of rows) {
-        const u = rowToUser(row)
-        const projectCount = await countUserProjects(u.username)
-        users.push({
-          username: u.username, role: u.role,
-          maxProjects: u.maxProjects, canShareProjects: u.canShareProjects,
-          projectCount, createdAt: u.createdAt,
-        })
-      }
-      return json(res, users)
-    }
-    if (path.startsWith('/api/admin/users/') && req.method === 'PUT') {
-      if (!isAdmin) return json(res, { error: 'Admin access required' }, 403)
-      const username = sanitizeUsername(decodeURIComponent(path.split('/').pop() || ''))
-      if (!username) return json(res, { error: 'Invalid username' }, 400)
-      const user = getUser(username)
-      if (!user) return json(res, { error: 'User not found' }, 404)
-      const patch = await parseBody(req)
-      if (patch.role !== undefined) stmtUpdateRole.run(patch.role, username)
-      if (patch.maxProjects !== undefined) stmtUpdateMaxProjects.run(patch.maxProjects, username)
-      if (patch.canShareProjects !== undefined) stmtUpdateCanShare.run(patch.canShareProjects ? 1 : 0, username)
-      return json(res, { ok: true })
-    }
-    if (path.startsWith('/api/admin/users/') && req.method === 'DELETE') {
-      if (!isAdmin) return json(res, { error: 'Admin access required' }, 403)
-      const username = sanitizeUsername(decodeURIComponent(path.split('/').pop() || ''))
-      if (!username) return json(res, { error: 'Invalid username' }, 400)
-      stmtDeleteUser.run(username)
-      try { const dir = userProjectDir(username); for (const f of await readdir(dir)) await unlink(join(dir, f)) } catch {}
-      return json(res, { ok: true })
-    }
-
-    // Invitations (admin only).
-    // Issue an opaque single-use token. The holder of the token can create
-    // exactly one user account with the quota baked into the invite. Used
-    // when ALLOW_REGISTRATION is false and the admin still needs to onboard
-    // specific users without ever handling their plaintext password.
-    if (path === '/api/admin/invitations' && req.method === 'POST') {
-      if (!isAdmin) return json(res, { error: 'Admin access required' }, 403)
-      const body = await parseBody(req).catch(() => ({}))
-      const maxProjects = Number.isInteger(body.maxProjects) ? body.maxProjects : DEFAULT_MAX_PROJECTS_PER_USER
-      const canShareProjects = body.canShareProjects === false ? 0 : 1
-      const expiresInDays = Number.isFinite(body.expiresInDays) ? body.expiresInDays : null
-      const expiresAt = expiresInDays != null
-        ? new Date(Date.now() + expiresInDays * 86400000).toISOString()
-        : null
-      const token = 'inv_' + randomBytes(24).toString('base64url')
-      stmtInsertInvite.run(token, maxProjects, canShareProjects, expiresAt, new Date().toISOString())
-      return json(res, { token, maxProjects, canShareProjects: !!canShareProjects, expiresAt }, 201)
-    }
-    if (path === '/api/admin/invitations' && req.method === 'GET') {
-      if (!isAdmin) return json(res, { error: 'Admin access required' }, 403)
-      const rows = stmtListInvites.all()
-      return json(res, rows.map(r => ({
-        token: r.token,
-        maxProjects: r.max_projects,
-        canShareProjects: !!r.can_share_projects,
-        expiresAt: r.expires_at,
-        consumedAt: r.consumed_at,
-        consumedBy: r.consumed_by,
-        createdAt: r.created_at,
-      })))
-    }
-
-    // Delete a pending (unconsumed) invitation. Consumed invitations
-    // cannot be deleted because the account they created still exists.
-    if (path.startsWith('/api/admin/invitations/') && req.method === 'DELETE') {
-      if (!isAdmin) return json(res, { error: 'Admin access required' }, 403)
-      const token = decodeURIComponent(path.split('/').pop())
-      const inv = stmtGetInvite.get(token)
-      if (!inv) return json(res, { error: 'Invitation not found' }, 404)
-      if (inv.consumed_at) return json(res, { error: 'Cannot delete a consumed invitation' }, 400)
-      db.prepare('DELETE FROM invitations WHERE token = ? AND consumed_at IS NULL').run(token)
       return json(res, { ok: true })
     }
 

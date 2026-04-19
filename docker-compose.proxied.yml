@@ -16,7 +16,6 @@
 #   - A `.env` file (or shell env) with at least:
 #         STIFT_DOMAIN=stift.example.com
 #         ADMIN_EMAIL=you@example.com
-#         ADMIN_TOKEN=<long random string>
 #
 # Usage:
 #   docker compose -f docker-compose.proxied.yml up -d --build
@@ -41,8 +40,6 @@ services:
       - MAX_PROJECT_SIZE_MB=${MAX_PROJECT_SIZE_MB:-15}
       - MAX_PROJECTS_PER_USER=${MAX_PROJECTS_PER_USER:-50}
       - ALLOW_REGISTRATION=${ALLOW_REGISTRATION:-true}
-      - ADMIN_TOKEN=${ADMIN_TOKEN}
-      - ADMIN_API_KEY=${ADMIN_API_KEY:-}
       - FOOTER_LINKS=${FOOTER_LINKS:-}
       - SPONSOR_URL=${SPONSOR_URL:-}
       - CORS_ORIGINS=${CORS_ORIGINS:-}
