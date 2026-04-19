@@ -35,8 +35,15 @@ function MagnifierView({ ann, stageRef }: { ann: MagnifierAnnotation; stageRef: 
     if (!stage || ann.sourceWidth < 2 || ann.sourceHeight < 2) return
     const t = setTimeout(() => {
       try {
+        // Hide the magnifier's own elements: display box, source
+        // outline, and connecting line so they don't appear in the
+        // captured image.
         const selfNode = stage.findOne('#' + ann.id)
+        const sourceNode = stage.findOne('#' + ann.id + '-source')
+        const lineNode = stage.findOne('#' + ann.id + '-line')
         if (selfNode) selfNode.visible(false)
+        if (sourceNode) sourceNode.visible(false)
+        if (lineNode) lineNode.visible(false)
         const transformers = stage.find('Transformer')
         transformers.forEach((tr: any) => tr.visible(false))
         // Reset zoom/pan so toDataURL clips in world coordinates,
@@ -55,6 +62,8 @@ function MagnifierView({ ann, stageRef }: { ann: MagnifierAnnotation; stageRef: 
         stage.scaleX(savedScale.x); stage.scaleY(savedScale.y)
         stage.x(savedPos.x); stage.y(savedPos.y)
         if (selfNode) selfNode.visible(true)
+        if (sourceNode) sourceNode.visible(true)
+        if (lineNode) lineNode.visible(true)
         transformers.forEach((tr: any) => tr.visible(true))
         stage.batchDraw()
         const image = new window.Image()
@@ -713,6 +722,7 @@ export function AnnotationRenderer({ stageRef }: Props) {
             return (
               <React.Fragment key={ann.id}>
                 <Rect
+                  id={ann.id + '-source'}
                   x={mag.sourceX} y={mag.sourceY}
                   width={mag.sourceWidth} height={mag.sourceHeight}
                   stroke={mag.borderColor} strokeWidth={mag.borderWidth}
@@ -720,6 +730,7 @@ export function AnnotationRenderer({ stageRef }: Props) {
                   listening={false}
                 />
                 <Line
+                  id={ann.id + '-line'}
                   points={linePts}
                   stroke={mag.borderColor} strokeWidth={mag.borderWidth}
                   dash={dashArray(mag.dash, mag.borderWidth)}

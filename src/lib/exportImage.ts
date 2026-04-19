@@ -27,7 +27,12 @@ function stageToDataURL(
   quality?: number,
   pixelRatio = 2,
 ): string {
-  return stage.toDataURL({
+  // Hide Transformer handles and selection outlines so they don't
+  // appear in exported images.
+  const transformers = stage.find('Transformer')
+  transformers.forEach((tr: any) => tr.visible(false))
+  stage.batchDraw()
+  const result = stage.toDataURL({
     x: 0,
     y: 0,
     width: canvasWidth,
@@ -36,6 +41,9 @@ function stageToDataURL(
     mimeType,
     quality,
   })
+  transformers.forEach((tr: any) => tr.visible(true))
+  stage.batchDraw()
+  return result
 }
 
 export function exportPNG(stage: Konva.Stage, canvasWidth: number, canvasHeight: number, name: string, pixelRatio = 2) {

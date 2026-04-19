@@ -9,7 +9,20 @@ import { useEffect, useState } from 'react'
 import { ChevronUp, ChevronDown, ChevronsUp, ChevronsDown, Pin, PinOff } from 'lucide-react'
 import { useEditorStore } from '../stores/editorStore'
 import { useProjectStore } from '../stores/projectStore'
-import { Annotation, FONT_OPTIONS, STAMP_PRESETS, ToolType } from '../types'
+import { Annotation, FONT_OPTIONS, STAMP_PRESETS, ToolType, ArrowAnnotation, CounterAnnotation, MagnifierAnnotation } from '../types'
+
+// Read any field from the annotation union without per-type type
+// guards. The property panel needs to access shape-specific fields
+// (stroke, fill, width, etc.) that only exist on some variants.
+// A single cast function is cleaner than 56 inline `as any` casts.
+function field<T = any>(ann: Annotation, key: string): T {
+  return (ann as Record<string, any>)[key] as T
+}
+
+// Write a partial patch to the annotation. The store's updateAnnotation
+// accepts Partial<Annotation> but shape-specific fields (stroke, fill,
+// etc.) aren't on the base type, so a cast is needed.
+type AnnPatch = Record<string, unknown>
 import { strokeWidthPatch } from '../canvas/useDrawingHandler'
 
 const COLOR_PRESETS = ['#e74c3c', '#e67e22', '#f39c12', '#2ecc71', '#3498db', '#9b59b6', '#1abc9c', '#34495e', '#ffffff', '#000000']
@@ -259,8 +272,8 @@ export function PropertyPanel() {
               <div>
                 <label className="block text-xs text-gray-400 mb-0.5">Number</label>
                 <input
-                  type="number" min={1} value={(ann as any).number}
-                  onChange={(e) => updateAnn({ number: Math.max(1, parseInt(e.target.value) || 1) } as any)}
+                  type="number" min={1} value={field(ann, 'number')}
+                  onChange={(e) => updateAnn({ number: Math.max(1, parseInt(e.target.value) || 1) } as AnnPatch)}
                   className="w-full bg-surface-overlay border border-border rounded px-2 py-1 text-xs text-gray-300 outline-none"
                 />
               </div>
@@ -268,56 +281,56 @@ export function PropertyPanel() {
 
             {/* Stroke color (arrows, rects, ellipses, lines, textbox border) */}
             {hasStroke && (
-              <ColorPicker label="Stroke Color" value={(ann as any).stroke} presets={COLOR_PRESETS}
-                onChange={(c) => { setStrokeColor(c); updateAnn({ stroke: c } as any) }} />
+              <ColorPicker label="Stroke Color" value={field(ann, 'stroke')} presets={COLOR_PRESETS}
+                onChange={(c) => { setStrokeColor(c); updateAnn({ stroke: c } as AnnPatch) }} />
             )}
 
             {/* Fill / text color */}
             {(isText || isTextBox) && (
-              <ColorPicker label="Text Color" value={(ann as any).fill} presets={COLOR_PRESETS}
-                onChange={(c) => updateAnn({ fill: c } as any)} />
+              <ColorPicker label="Text Color" value={field(ann, 'fill')} presets={COLOR_PRESETS}
+                onChange={(c) => updateAnn({ fill: c } as AnnPatch)} />
             )}
 
             {/* Shape fill color (counter, rectangle, ellipse, colorbox, highlight) */}
             {(ann.type === 'counter' || ann.type === 'rectangle' || ann.type === 'ellipse' || ann.type === 'colorbox' || ann.type === 'highlight') && (
               <ColorPicker
                 label={ann.type === 'counter' ? 'Color' : 'Fill Color'}
-                value={(ann as any).fill}
+                value={field(ann, 'fill')}
                 presets={COLOR_PRESETS}
                 allowTransparent={ann.type === 'rectangle' || ann.type === 'ellipse'}
-                onClear={() => updateAnn({ fill: undefined } as any)}
-                onChange={(c) => updateAnn({ fill: c } as any)}
+                onClear={() => updateAnn({ fill: undefined } as AnnPatch)}
+                onChange={(c) => updateAnn({ fill: c } as AnnPatch)}
               />
             )}
 
             {/* Background color for textboxes */}
             {isTextBox && (
-              <ColorPicker label="Background" value={(ann as any).backgroundColor || '#fff'} presets={COLOR_PRESETS}
-                allowTransparent onClear={() => updateAnn({ backgroundColor: 'transparent' } as any)}
-                onChange={(c) => updateAnn({ backgroundColor: c } as any)} />
+              <ColorPicker label="Background" value={field(ann, 'backgroundColor') || '#fff'} presets={COLOR_PRESETS}
+                allowTransparent onClear={() => updateAnn({ backgroundColor: 'transparent' } as AnnPatch)}
+                onChange={(c) => updateAnn({ backgroundColor: c } as AnnPatch)} />
             )}
 
             {/* Stroke width */}
             {hasStroke && (
-              <SliderInput label="Stroke Width" value={(ann as any).strokeWidth} min={1} max={20}
-                onChange={(v) => { setStrokeWidth(v); updateAnn(strokeWidthPatch(ann.type, v) as any) }} />
+              <SliderInput label="Stroke Width" value={field(ann, 'strokeWidth')} min={1} max={20}
+                onChange={(v) => { setStrokeWidth(v); updateAnn(strokeWidthPatch(ann.type, v) as AnnPatch) }} />
             )}
 
             {/* Counter size */}
             {ann.type === 'counter' && (
-              <SliderInput label="Size" value={(ann as any).radius} min={8} max={72}
-                onChange={(v) => { setFontSize(v); updateAnn({ radius: v, fontSize: v } as any) }} />
+              <SliderInput label="Size" value={field(ann, 'radius')} min={8} max={72}
+                onChange={(v) => { setFontSize(v); updateAnn({ radius: v, fontSize: v } as AnnPatch) }} />
             )}
 
             {/* Font size + family */}
             {(isText || isTextBox || isDimension) && (
               <>
-                <SliderInput label="Font Size" value={(ann as any).fontSize} min={8} max={72}
-                  onChange={(v) => { setFontSize(v); updateAnn({ fontSize: v } as any) }} />
+                <SliderInput label="Font Size" value={field(ann, 'fontSize')} min={8} max={72}
+                  onChange={(v) => { setFontSize(v); updateAnn({ fontSize: v } as AnnPatch) }} />
                 <div>
                   <label className="block text-xs text-gray-400 mb-0.5">Font</label>
-                  <select value={(ann as any).fontFamily || 'sans-serif'}
-                    onChange={(e) => updateAnn({ fontFamily: e.target.value } as any)}
+                  <select value={field(ann, 'fontFamily') || 'sans-serif'}
+                    onChange={(e) => updateAnn({ fontFamily: e.target.value } as AnnPatch)}
                     className="w-full bg-surface-overlay border border-border rounded px-2 py-1 text-xs text-gray-300 outline-none">
                     {FONT_OPTIONS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
                   </select>
@@ -327,27 +340,27 @@ export function PropertyPanel() {
 
             {/* Padding for textboxes */}
             {isTextBox && (
-              <SliderInput label="Padding" value={(ann as any).padding ?? Math.round((ann as any).fontSize * 0.6)} min={2} max={30}
-                onChange={(v) => updateAnn({ padding: v } as any)} />
+              <SliderInput label="Padding" value={field(ann, 'padding') ?? Math.round(field(ann, 'fontSize') * 0.6)} min={2} max={30}
+                onChange={(v) => updateAnn({ padding: v } as AnnPatch)} />
             )}
 
             {/* Blur size */}
             {isBlur && (
-              <SliderInput label="Blur Size" value={(ann as any).pixelSize} min={2} max={40}
-                onChange={(v) => { setBlurPixelSize(v); updateAnn({ pixelSize: v } as any) }} />
+              <SliderInput label="Blur Size" value={field(ann, 'pixelSize')} min={2} max={40}
+                onChange={(v) => { setBlurPixelSize(v); updateAnn({ pixelSize: v } as AnnPatch) }} />
             )}
 
             {/* Magnifier controls */}
             {isMagnifier && (
               <>
-                <ColorPicker label="Border Color" value={(ann as any).borderColor} presets={COLOR_PRESETS}
-                  onChange={(c) => updateAnn({ borderColor: c } as any)} />
-                <SliderInput label="Border" value={(ann as any).borderWidth ?? 2} min={0} max={8}
-                  onChange={(v) => updateAnn({ borderWidth: v } as any)} />
+                <ColorPicker label="Border Color" value={field(ann, 'borderColor')} presets={COLOR_PRESETS}
+                  onChange={(c) => updateAnn({ borderColor: c } as AnnPatch)} />
+                <SliderInput label="Border" value={field(ann, 'borderWidth') ?? 2} min={0} max={8}
+                  onChange={(v) => updateAnn({ borderWidth: v } as AnnPatch)} />
                 <div>
                   <label className="block text-xs text-gray-400 mb-0.5">Line Style</label>
-                  <select value={(ann as any).dash || 'dashed'}
-                    onChange={(e) => updateAnn({ dash: e.target.value } as any)}
+                  <select value={field(ann, 'dash') || 'dashed'}
+                    onChange={(e) => updateAnn({ dash: e.target.value } as AnnPatch)}
                     className="w-full bg-surface-overlay border border-border rounded px-2 py-1 text-xs text-gray-300 outline-none">
                     <option value="solid">Solid</option>
                     <option value="dashed">Dashed</option>
@@ -370,8 +383,8 @@ export function PropertyPanel() {
             {hasStroke && !isTextBox && (
               <div>
                 <label className="block text-xs text-gray-400 mb-0.5">Line Style</label>
-                <select value={(ann as any).dash || 'solid'}
-                  onChange={(e) => updateAnn({ dash: e.target.value } as any)}
+                <select value={field(ann, 'dash') || 'solid'}
+                  onChange={(e) => updateAnn({ dash: e.target.value } as AnnPatch)}
                   className="w-full bg-surface-overlay border border-border rounded px-2 py-1 text-xs text-gray-300 outline-none">
                   <option value="solid">Solid</option>
                   <option value="dashed">Dashed</option>
@@ -384,17 +397,17 @@ export function PropertyPanel() {
             {isArrow && (
               <>
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={(ann as any).doubleHead ?? false}
-                    onChange={(e) => updateAnn({ doubleHead: e.target.checked } as any)} className="accent-accent" />
+                  <input type="checkbox" checked={field(ann, 'doubleHead') ?? false}
+                    onChange={(e) => updateAnn({ doubleHead: e.target.checked } as AnnPatch)} className="accent-accent" />
                   <span className="text-xs text-gray-400">Double-head</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={(ann as any).curved ?? false}
+                  <input type="checkbox" checked={field(ann, 'curved') ?? false}
                     onChange={(e) => {
-                      const pts = (ann as any).points as number[]
+                      const pts = field(ann, 'points') as number[]
                       const cx = (pts[0] + pts[2]) / 2
                       const cy = (pts[1] + pts[3]) / 2 - 50
-                      updateAnn({ curved: e.target.checked, controlX: cx, controlY: cy } as any)
+                      updateAnn({ curved: e.target.checked, controlX: cx, controlY: cy } as AnnPatch)
                     }} className="accent-accent" />
                   <span className="text-xs text-gray-400">Curved</span>
                 </label>
@@ -403,30 +416,30 @@ export function PropertyPanel() {
 
             {/* Corner radius */}
             {isRect && (
-              <SliderInput label="Corner Radius" value={(ann as any).cornerRadius ?? 6} min={0} max={50}
-                onChange={(v) => updateAnn({ cornerRadius: v } as any)} />
+              <SliderInput label="Corner Radius" value={field(ann, 'cornerRadius') ?? 6} min={0} max={50}
+                onChange={(v) => updateAnn({ cornerRadius: v } as AnnPatch)} />
             )}
 
             {/* Stamp text */}
             {isStamp && (
               <div>
                 <label className="block text-xs text-gray-400 mb-0.5">Stamp Text</label>
-                <select value={STAMP_PRESETS.includes((ann as any).text) ? (ann as any).text : '...'}
+                <select value={STAMP_PRESETS.includes(field(ann, 'text')) ? field(ann, 'text') : '...'}
                   onChange={(e) => {
                     if (e.target.value === '...') {
-                      const custom = prompt('Enter custom stamp text:', (ann as any).text)
-                      if (custom) updateAnn({ text: custom } as any)
+                      const custom = prompt('Enter custom stamp text:', field(ann, 'text'))
+                      if (custom) updateAnn({ text: custom } as AnnPatch)
                     } else {
-                      updateAnn({ text: e.target.value } as any)
+                      updateAnn({ text: e.target.value } as AnnPatch)
                     }
                   }}
                   className="w-full bg-surface-overlay border border-border rounded px-2 py-1 text-xs text-gray-300 outline-none">
                   {STAMP_PRESETS.map((s) => <option key={s} value={s}>{s}</option>)}
                   <option value="...">Custom...</option>
                 </select>
-                {!STAMP_PRESETS.includes((ann as any).text) && (
-                  <input type="text" value={(ann as any).text}
-                    onChange={(e) => updateAnn({ text: e.target.value } as any)}
+                {!STAMP_PRESETS.includes(field(ann, 'text')) && (
+                  <input type="text" value={field(ann, 'text')}
+                    onChange={(e) => updateAnn({ text: e.target.value } as AnnPatch)}
                     className="w-full mt-1 bg-surface-overlay border border-border rounded px-2 py-1 text-xs text-gray-300 outline-none focus:border-accent" />
                 )}
               </div>
@@ -436,17 +449,17 @@ export function PropertyPanel() {
             {isDimension && (
               <div>
                 <label className="block text-xs text-gray-400 mb-1">Label</label>
-                <input type="text" value={(ann as any).label || ''}
+                <input type="text" value={field(ann, 'label') || ''}
                   onChange={(e) => {
                     const label = e.target.value
-                    updateAnn({ label } as any)
+                    updateAnn({ label } as AnnPatch)
                     const match = label.match(/^([\d.]+)\s*(.+)$/)
                     if (match) {
                       const value = parseFloat(match[1])
                       if (value > 0) {
-                        const pts = (ann as any).points as number[]
+                        const pts = field(ann, 'points') as number[]
                         const pxLen = Math.sqrt((pts[2] - pts[0]) ** 2 + (pts[3] - pts[1]) ** 2)
-                        updateAnn({ pixelsPerUnit: pxLen / value, unit: match[2].trim() } as any)
+                        updateAnn({ pixelsPerUnit: pxLen / value, unit: match[2].trim() } as AnnPatch)
                       }
                     }
                   }}
@@ -464,14 +477,14 @@ export function PropertyPanel() {
               </div>
               {hasWidth && !isTextBox && (
                 <div className="grid grid-cols-2 gap-1.5">
-                  <NumInput label="W" value={Math.round((ann as any).width)} onChange={(v) => updateAnn({ width: v } as any)} />
-                  <NumInput label="H" value={Math.round((ann as any).height)} onChange={(v) => updateAnn({ height: v } as any)} />
+                  <NumInput label="W" value={Math.round(field(ann, 'width'))} onChange={(v) => updateAnn({ width: v } as AnnPatch)} />
+                  <NumInput label="H" value={Math.round(field(ann, 'height'))} onChange={(v) => updateAnn({ height: v } as AnnPatch)} />
                 </div>
               )}
               {hasRadius && (
                 <div className="grid grid-cols-2 gap-1.5">
-                  <NumInput label="RX" value={Math.round((ann as any).radiusX)} onChange={(v) => updateAnn({ radiusX: v } as any)} />
-                  <NumInput label="RY" value={Math.round((ann as any).radiusY)} onChange={(v) => updateAnn({ radiusY: v } as any)} />
+                  <NumInput label="RX" value={Math.round(field(ann, 'radiusX'))} onChange={(v) => updateAnn({ radiusX: v } as AnnPatch)} />
+                  <NumInput label="RY" value={Math.round(field(ann, 'radiusY'))} onChange={(v) => updateAnn({ radiusY: v } as AnnPatch)} />
                 </div>
               )}
               <NumInput label="Rotation" value={Math.round(ann.rotation || 0)} onChange={(v) => updateAnn({ rotation: v })} suffix="°" />

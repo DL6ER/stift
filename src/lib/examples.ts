@@ -182,12 +182,12 @@ function makeExample1(): Project {
       // Step 1: Conversion rate card showing -3.2%
       // SVG card: (732,132) 220x100 -> canvas: (772,182) to (992,282)
       { id: 'c1', type: 'counter', x: 900, y: 192, number: 1, fill: '#e74c3c', textColor: '#ffffff', radius: 20, fontSize: 16 },
-      { id: 'arr1', type: 'arrow', x: 0, y: 0, points: [888, 206, 860, 230], stroke: '#e74c3c', strokeWidth: 3, headSize: 10 },
+      { id: 'arr1', type: 'arrow', x: 0, y: 0, points: [888, 210, 840, 260], stroke: '#e74c3c', strokeWidth: 3, headSize: 10, curved: true, controlX: 900, controlY: 255 },
       { id: 'txt1', type: 'text', x: 770, y: 140, text: 'Dropping since Aug!', fontSize: 13, fontFamily: 'sans-serif', fill: '#e74c3c', backgroundColor: 'rgba(30,30,46,0.9)', padding: 6 },
 
       // Step 2: Red bars in chart
       // SVG red bars: (750,460)-(910,540) -> canvas: (790,510)-(950,590)
-      { id: 'c2', type: 'counter', x: 955, y: 518, number: 2, fill: '#e74c3c', textColor: '#ffffff', radius: 20, fontSize: 16 },
+      { id: 'c2', type: 'counter', x: 955, y: 518, number: 2, fill: '#e74c3c', textColor: '#ffffff', radius: 20, fontSize: 16, tailX: -30, tailY: 25 },
       { id: 'rect1', type: 'rectangle', x: 788, y: 508, width: 164, height: 84, stroke: '#e74c3c', strokeWidth: 2, cornerRadius: 6 },
       { id: 'txt2', type: 'text', x: 660, y: 598, text: 'Q3 revenue collapse -- v3.8 deploy', fontSize: 12, fontFamily: 'sans-serif', fill: '#ff6b6b', backgroundColor: 'rgba(30,30,46,0.9)', padding: 6 },
 
@@ -346,7 +346,7 @@ function makeExample2(): Project {
       // 3: VREG (SVG: 780,150,100x70 -> canvas center: 980,265)
       { id: 'c3', type: 'counter', x: 1050, y: 225, number: 3, fill: '#2ecc71', textColor: '#ffffff', radius: 20, fontSize: 16 },
       { id: 'ellipse-vreg', type: 'ellipse', x: 920, y: 220, radiusX: 60, radiusY: 45, stroke: '#2ecc71', strokeWidth: 2 },
-      { id: 'txt-vreg', type: 'text', x: 1055, y: 242, text: 'VREG: 4.98V (OK)', fontSize: 11, fontFamily: 'sans-serif', fill: '#2ecc71', backgroundColor: 'rgba(30,30,30,0.85)', padding: 5 },
+      { id: 'txt-vreg', type: 'text', x: 1055, y: 258, text: 'VREG: 4.98V (OK)', fontSize: 11, fontFamily: 'sans-serif', fill: '#2ecc71', backgroundColor: 'rgba(30,30,30,0.85)', padding: 5 },
       // 4: Capacitors (SVG: C1 at 300,380, C2 at 350,380 -> canvas: 450,460 / 500,460)
       { id: 'c4', type: 'counter', x: 500, y: 445, number: 4, fill: '#f39c12', textColor: '#ffffff', radius: 20, fontSize: 16 },
       { id: 'arr-cap', type: 'arrow', x: 0, y: 0, points: [490, 455, 478, 465], stroke: '#f39c12', strokeWidth: 2.5, headSize: 10 },
@@ -358,12 +358,11 @@ function makeExample2(): Project {
       // Redact serial number (SVG: text "SN:X9F2-04A1" at ~460,324, font 7px -> canvas: 610,404)
       { id: 'cbox-sn', type: 'colorbox', x: 605, y: 400, width: 60, height: 12, fill: '#1b4332' },
       { id: 'txt-redact', type: 'text', x: 608, y: 400, text: '[SN]', fontSize: 7, fontFamily: 'monospace', fill: '#52b788', padding: 1 },
-      // Scale bar at bottom of image (canvas y = 80+700+10 = 790)
-      { id: 'line-measure', type: 'line', x: 0, y: 0, points: [170, 795, 1130, 795], stroke: '#ffffff', strokeWidth: 1 },
-      { id: 'txt-scale', type: 'text', x: 610, y: 798, text: '96mm', fontSize: 12, fontFamily: 'sans-serif', fill: '#ffffff', backgroundColor: 'rgba(30,30,30,0.8)', padding: 4 },
+      // Magnifier: zoom into MCU pin area, displayed top-left of the MCU
+      { id: 'mag1', type: 'magnifier', x: 170, y: 130, sourceX: 580, sourceY: 340, sourceWidth: 60, sourceHeight: 40, width: 180, height: 120, zoom: 3, borderColor: '#3498db', borderWidth: 2, dash: 'dashed' },
 
-      // Showcase: dimension line for board width
-      { id: 'dim-board', type: 'dimension', x: 0, y: 0, points: [150, 780, 1050, 780], stroke: '#ffffff', strokeWidth: 1, fontSize: 10, label: '96 mm', unit: 'mm', pixelsPerUnit: 9.375, capSize: 8 },
+      // Dimension line spanning the full board width
+      { id: 'dim-board', type: 'dimension', x: 0, y: 0, points: [150, 800, 1150, 800], stroke: '#aaaaaa', strokeWidth: 1.5, fontSize: 12, label: '96 mm', unit: 'mm', pixelsPerUnit: 10.417, capSize: 8 },
 
       // Showcase: monospace font for component label
       { id: 'txt-mono', type: 'text', x: 750, y: 350, text: 'U1: STM32F4', fontSize: 10, fontFamily: 'monospace', fill: '#2ecc71', backgroundColor: 'rgba(30,30,30,0.85)', padding: 4 },

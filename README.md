@@ -148,7 +148,7 @@ For public-Internet deployments, use the included `docker-compose.proxied.yml`, 
 cat > .env <<EOF
 STIFT_DOMAIN=stift.example.com
 ADMIN_EMAIL=you@example.com
-ADMIN_TOKEN=$(openssl rand -hex 32)
+ADMIN_TOKEN=$(openssl rand -base64 48)
 ALLOW_REGISTRATION=false
 EOF
 

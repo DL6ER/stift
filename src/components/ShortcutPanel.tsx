@@ -11,6 +11,7 @@ const SHORTCUTS = [
   ['Actions', [
     ['Ctrl+Z', 'Undo'], ['Ctrl+Y', 'Redo'], ['Ctrl+C', 'Copy'], ['Ctrl+V', 'Paste'],
     ['Ctrl+D', 'Duplicate'], ['Ctrl+A', 'Select All'], ['Ctrl+S', 'Save'],
+    ['Ctrl+G', 'Group'], ['Ctrl+Shift+G', 'Ungroup'],
     ['Delete', 'Remove'], ['Escape', 'Deselect'],
   ]],
   ['Navigation', [
@@ -19,6 +20,7 @@ const SHORTCUTS = [
   ]],
   ['Drawing modifiers', [
     ['Shift+Drag', 'Snap angle / square / proportional resize'],
+    ['Scroll while drawing', 'Adjust stroke width'],
   ]],
   ['Editing', [
     ['Arrow Keys', 'Nudge 1px'], ['Shift+Arrow', 'Nudge 10px'],
