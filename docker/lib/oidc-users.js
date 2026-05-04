@@ -26,6 +26,15 @@ export function initUserSchema(db) {
   if (!cols.has('email')) {
     db.exec('ALTER TABLE users ADD COLUMN email TEXT')
   }
+  // OIDC users have no password, so the SPA cannot derive its E2E
+  // encryption key the regular way. Instead the user picks a separate
+  // encryption passphrase the first time they sign in. Verification
+  // ciphertext (a known plaintext encrypted with that passphrase-derived
+  // key) is stored here so the SPA can validate the passphrase on later
+  // sign-ins without the server ever seeing the plaintext.
+  if (!cols.has('encryption_verification')) {
+    db.exec("ALTER TABLE users ADD COLUMN encryption_verification TEXT")
+  }
 
   // A non-partial unique index is required for the ON CONFLICT(external_oidc_sub)
   // UPSERT clause to work. SQLite treats NULL values as distinct, so multiple

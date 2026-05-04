@@ -38,6 +38,7 @@ WORKDIR /app
 COPY --from=api-deps /api/node_modules /app/node_modules
 COPY docker/package.json /app/package.json
 COPY docker/server.js /app/server.js
+COPY docker/lib /app/lib
 COPY docker/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 

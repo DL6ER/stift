@@ -646,8 +646,54 @@ const server = createServer(async (req, res) => {
       const sid = createSession(user.username)
       const secure = proto === 'https'
       setCookie(res, SESSION_COOKIE, signValue(sid), { maxAge: SESSION_MAX_AGE_MS / 1000, secure })
-      res.writeHead(302, { Location: '/' })
-      res.end()
+      // Bridge page instead of a plain 302: the SPA reads username +
+      // authToken from localStorage, but the OIDC callback only set an
+      // HttpOnly session cookie. The bridge fetches /api/oidc/session
+      // using that cookie, writes the values into localStorage, and then
+      // navigates to the SPA root. Without this step the SPA never sees
+      // the OIDC login and keeps showing the sign-in button.
+      // The bridge logic lives in /oidc/bridge.js (served separately) so
+      // it loads under a strict script-src 'self' CSP without needing
+      // unsafe-inline or a per-request nonce.
+      res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store',
+      })
+      res.end(`<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Signing you in&hellip;</title></head>
+<body>
+<noscript>JavaScript is required to finish signing in. <a href="/">Go to app</a></noscript>
+<p>Signing you in&hellip;</p>
+<script src="/oidc/bridge.js"></script>
+</body>
+</html>`)
+      return
+    }
+
+    if (OIDC_ENABLED && path === '/oidc/bridge.js' && req.method === 'GET') {
+      res.writeHead(200, {
+        'Content-Type': 'application/javascript; charset=utf-8',
+        'Cache-Control': 'no-store',
+      })
+      res.end(`(async function () {
+  try {
+    const r = await fetch('/api/oidc/session', { credentials: 'same-origin' });
+    if (!r.ok) throw new Error('session lookup failed: ' + r.status);
+    const d = await r.json();
+    if (!d.authenticated) throw new Error('session not authenticated');
+    try {
+      localStorage.setItem('stift-auth-username', d.username);
+      localStorage.setItem('stift-auth-token', d.authToken);
+      localStorage.setItem('stift-auth-source', 'oidc');
+    } catch (e) {}
+  } catch (e) {
+    // fall through to / and let the SPA handle the unauthenticated state
+  } finally {
+    location.replace('/');
+  }
+})();
+`)
       return
     }
 
@@ -664,6 +710,44 @@ const server = createServer(async (req, res) => {
         maxProjects: user.maxProjects,
         canShareProjects: user.canShareProjects,
       })
+    }
+
+    // E2E encryption verification blob, OIDC-only. The blob is opaque
+    // ciphertext produced and consumed entirely client-side; the server
+    // just stores and returns it. This lets the SPA tell first-login
+    // (no blob -- prompt for a new passphrase, store its verification)
+    // from returning sign-in (blob present -- prompt to enter and validate
+    // it client-side). Auth comes from the OIDC session cookie, not from
+    // the regular X-Auth-Token header, since the SPA has not yet derived
+    // its encryption key at this point.
+    if (OIDC_ENABLED && path === '/api/oidc/encryption-verification' && req.method === 'GET') {
+      const sess = getSession(req)
+      if (!sess) return json(res, { error: 'Authentication required' }, 401)
+      const row = db.prepare('SELECT encryption_verification FROM users WHERE username = ?').get(sess.username)
+      if (!row) return json(res, { error: 'User not found' }, 404)
+      return json(res, { verification: row.encryption_verification || null })
+    }
+    if (OIDC_ENABLED && path === '/api/oidc/encryption-verification' && req.method === 'PUT') {
+      const sess = getSession(req)
+      if (!sess) return json(res, { error: 'Authentication required' }, 401)
+      const body = await parseBody(req)
+      const blob = typeof body?.verification === 'string' ? body.verification : null
+      if (!blob || blob.length > 4096) {
+        return json(res, { error: 'verification must be a non-empty base64 string under 4 KiB' }, 400)
+      }
+      const existing = db.prepare('SELECT encryption_verification FROM users WHERE username = ?').get(sess.username)
+      if (!existing) return json(res, { error: 'User not found' }, 404)
+      // Refuse to overwrite an existing verification blob: if the user
+      // could swap it out at will, an attacker who hijacks the OIDC
+      // session could replace the ciphertext with one they know the
+      // plaintext for and then read all server-stored projects after
+      // re-encryption. First-write wins; reset is an explicit operator
+      // action.
+      if (existing.encryption_verification) {
+        return json(res, { error: 'verification already set' }, 409)
+      }
+      db.prepare('UPDATE users SET encryption_verification = ? WHERE username = ?').run(blob, sess.username)
+      return json(res, { ok: true })
     }
 
     // Auth routes.

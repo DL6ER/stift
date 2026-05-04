@@ -18,6 +18,7 @@ import { WelcomeOverlay } from './components/WelcomeOverlay'
 import { ContextMenu } from './components/ContextMenu'
 import { ShortcutPanel } from './components/ShortcutPanel'
 import { InviteHandler } from './components/InviteHandler'
+import { OidcUnlockGate } from './components/OidcUnlockGate'
 import { useConfigStore } from './stores/configStore'
 import { startAutosave, getAutosave, clearAutosave } from './lib/autosave'
 
@@ -337,6 +338,7 @@ export default function App() {
       )}
       <WelcomeOverlay />
       <InviteHandler />
+      <OidcUnlockGate />
       {toast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-surface-raised border border-border rounded-lg px-4 py-2 text-sm text-gray-300 shadow-lg pointer-events-none animate-fade-in">
           {toast}
