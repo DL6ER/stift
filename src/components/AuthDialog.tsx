@@ -102,7 +102,7 @@ export function AuthDialog({ onClose, onSuccess, inviteToken }: Props) {
                 <LogIn size={14} className="shrink-0 mt-0.5" />
                 <div>
                   <strong className="text-blue-200">Single Sign-On</strong>
-                  <p className="mt-1">Sie werden zum Anmelde-Dienst Ihrer Organisation weitergeleitet.</p>
+                  <p className="mt-1">You will be redirected to your organization's identity provider.</p>
                 </div>
               </div>
             </div>
@@ -152,16 +152,15 @@ export function AuthDialog({ onClose, onSuccess, inviteToken }: Props) {
                 <div className="flex gap-2">
                   <AlertTriangle size={14} className="shrink-0 mt-0.5" />
                   <div>
-                    <strong className="text-amber-300">Kein Reset möglich</strong>
+                    <strong className="text-amber-300">No reset possible</strong>
                     <p className="mt-1">
-                      Dieses Kennwort ist NICHT Ihr Anmelde-Kennwort eines anderen Dienstes.
-                      Es ist eine zusätzliche Zero-Knowledge-Schicht für Ihre Projekt-Daten — Ihr
-                      Verschlüsselungsschlüssel wird direkt aus diesem Kennwort abgeleitet.
+                      This password is NOT your sign-in password from another service.
+                      It is an extra zero-knowledge layer for your project data: your
+                      encryption key is derived directly from this password.
                     </p>
                     <p className="mt-1">
-                      Wer das Kennwort verliert, verliert den Zugang zu allen gespeicherten
-                      Projekten — ohne Ausnahme. Bewahren Sie es sicher auf, idealerweise in
-                      einem Passwort-Manager.
+                      Lose this password and you lose access to all stored projects with
+                      no recovery path. Store it safely, ideally in a password manager.
                     </p>
                   </div>
                 </div>
@@ -173,7 +172,7 @@ export function AuthDialog({ onClose, onSuccess, inviteToken }: Props) {
                 <div className="flex gap-2">
                   <Shield size={14} className="shrink-0 mt-0.5" />
                   <div>
-                    <p>Dieses Kennwort verbleibt auf Ihrem Gerät und wird nie an den Server gesendet. Es wird lokal zur Entschlüsselung Ihrer Projekt-Daten verwendet.</p>
+                    <p>This password stays on your device and is never sent to the server. It is used locally to decrypt your project data.</p>
                   </div>
                 </div>
               </div>
