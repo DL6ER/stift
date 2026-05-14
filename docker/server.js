@@ -725,6 +725,24 @@ const server = createServer(async (req, res) => {
       return
     }
 
+    // Server-side OIDC logout. The SPA's local clear-out is not enough --
+    // the in-memory session map still holds the SID's username and the
+    // plaintext auth token issued at OIDC callback time. Anyone who later
+    // captures the stift_sid cookie from a shared device could otherwise
+    // keep retrieving the user's credentials via /api/oidc/session for the
+    // full 24h session window. POST-only so a stray cross-origin GET cannot
+    // log a user out involuntarily.
+    if (OIDC_ENABLED && path === '/api/oidc/logout' && req.method === 'POST') {
+      const cookies = parseCookies(req)
+      const raw = cookies[SESSION_COOKIE]
+      if (raw) {
+        const sid = unsignValue(raw)
+        if (sid) sessions.delete(sid)
+      }
+      clearCookie(res, SESSION_COOKIE)
+      return json(res, { ok: true })
+    }
+
     // OIDC session check -- lets the SPA know if there is an active SSO session.
     if (OIDC_ENABLED && path === '/api/oidc/session' && req.method === 'GET') {
       const sess = getSession(req)

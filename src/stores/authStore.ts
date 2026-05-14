@@ -251,6 +251,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: () => {
+    // For OIDC sessions also invalidate the server-side session entry so
+    // the cached plaintext bearer token disappears from the in-memory
+    // sessions map. Fire-and-forget: any failure (network blip, server
+    // down) must not block the local clear-out.
+    if (localStorage.getItem('stift-auth-source') === 'oidc') {
+      fetch('/api/oidc/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {})
+    }
     set({ username: null, authToken: null, encryptionKey: null, isAuthenticated: false, canShareProjects: null, oidcNeedsUnlock: false })
     localStorage.removeItem('stift-auth-username')
     localStorage.removeItem('stift-auth-token')
