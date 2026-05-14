@@ -1240,6 +1240,33 @@ const server = createServer(async (req, res) => {
       await writeFileAtomic(join(DATA_DIR, 'shared', `${memberMatch[1]}.json`), JSON.stringify(data))
       return json(res, { ok: true })
     }
+    // Self-update the caller's own wrapped key on a shared project. Used by
+    // the SPA right after a freshly invited user opens the project for the
+    // first time: the inviter wrapped the Project Key under a derivation of
+    // (projectId, inviteeUsername), which is reproducible from public data
+    // and therefore only safe for the few seconds between invite and first
+    // open. After the invitee has unwrapped with the derived key, they
+    // immediately re-wrap with their personal key and PUT it here so the
+    // pending-invite window closes. The endpoint only ever touches the
+    // caller's own member entry.
+    const myWrappedKeyMatch = path.match(/^\/api\/shared\/([^/]+)\/wrapped-key$/)
+    if (myWrappedKeyMatch && req.method === 'PUT') {
+      if (!isValidProjectId(myWrappedKeyMatch[1])) return json(res, { error: 'Invalid project id' }, 400)
+      const user = await authenticate(req)
+      if (!user) return json(res, { error: 'Authentication required' }, 401)
+      const data = await readSharedProject(myWrappedKeyMatch[1])
+      if (!data) return json(res, { error: 'Shared project not found' }, 404)
+      const idx = data.members?.findIndex(m => m.username === user.username) ?? -1
+      if (idx < 0) return json(res, { error: 'Not a member' }, 403)
+      const { wrappedKey } = await parseBody(req)
+      if (typeof wrappedKey !== 'string' || !wrappedKey || wrappedKey.length > 4096) {
+        return json(res, { error: 'wrappedKey must be a non-empty base64 string under 4 KiB' }, 400)
+      }
+      data.members[idx] = { ...data.members[idx], wrappedKey }
+      await writeFileAtomic(join(DATA_DIR, 'shared', `${myWrappedKeyMatch[1]}.json`), JSON.stringify(data))
+      return json(res, { ok: true })
+    }
+
     const rmMemberMatch = path.match(/^\/api\/shared\/([^/]+)\/members\/([^/]+)$/)
     if (rmMemberMatch && req.method === 'DELETE') {
       if (!isValidProjectId(rmMemberMatch[1])) return json(res, { error: 'Invalid project id' }, 400)

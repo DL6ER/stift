@@ -122,6 +122,15 @@ export async function inviteMember(projectId: string, username: string, role: st
   }
 }
 
+export async function updateMyWrappedKey(projectId: string, wrappedKey: string): Promise<void> {
+  const res = await fetch(`${BASE}/shared/${encodeURIComponent(projectId)}/wrapped-key`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ wrappedKey }),
+  })
+  if (!res.ok) throw new Error('Failed to update wrapped key')
+}
+
 export async function removeMember(projectId: string, username: string): Promise<void> {
   const res = await fetch(`${BASE}/shared/${encodeURIComponent(projectId)}/members/${encodeURIComponent(username)}`, {
     method: 'DELETE',

@@ -89,13 +89,48 @@ export function ShareDialog({ onClose }: Props) {
   }
 
   const handleOpenShared = async (id: string) => {
-    if (!encryptionKey) return
+    if (!encryptionKey || !username) return
     try {
       const data = await api.loadSharedProject(id)
       const member = data.members?.find((m: any) => m.username === username)
       if (!member) throw new Error('Not a member')
-      // Unwrap project key
-      const projectKey = await unwrapProjectKey(member.wrappedKey, encryptionKey)
+
+      // Two-stage unwrap. The normal case is that this user's member entry
+      // was wrapped under their personal encryption key by a previous open
+      // (or because they are the original owner). If that fails, fall back
+      // to the invitation key derived from (id, username) -- this is how
+      // handleInvite seeds a wrappedKey for a user we cannot encrypt
+      // directly to, since we don't share their password.
+      let projectKey: CryptoKey
+      let needsRewrap = false
+      try {
+        projectKey = await unwrapProjectKey(member.wrappedKey, encryptionKey)
+      } catch {
+        const inviteKey = await deriveKey(id, username)
+        try {
+          projectKey = await unwrapProjectKey(member.wrappedKey, inviteKey)
+        } catch {
+          throw new Error('wrong password or invalid invitation key')
+        }
+        needsRewrap = true
+      }
+
+      // First open after invite: re-wrap the Project Key with the personal
+      // encryption key and persist that wrappedKey back to the server. From
+      // this point on the wrapped key is bound to the invitee's password
+      // only; the derived invite key is no longer in play for this member.
+      // Best-effort: if the PUT fails the project still opens, the re-wrap
+      // simply happens again on the next open.
+      if (needsRewrap) {
+        try {
+          const rewrapped = await wrapProjectKey(projectKey, encryptionKey)
+          await api.updateMyWrappedKey(id, rewrapped)
+        } catch {
+          // Leave the invite-derived wrappedKey in place; it will be
+          // retried on the next handleOpenShared.
+        }
+      }
+
       // Decrypt project data
       const plaintext = await decrypt(projectKey, data.data)
       const project = JSON.parse(plaintext)
