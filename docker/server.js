@@ -60,7 +60,14 @@ if (process.env.FOOTER_LINKS) {
 // "Registration is disabled" message. Useful for hosted instances that want
 // to point new visitors at an external onboarding / billing page (any URL
 // the operator chooses) so they can request an invitation.
-const SPONSOR_URL = process.env.SPONSOR_URL || ''
+// The URL is validated as http(s) for the same reason FOOTER_LINKS is: an
+// operator typo (or a copy-pasted javascript:/data: URL) must not turn into
+// a rendered href in the SPA. Invalid input is dropped with a warning.
+let SPONSOR_URL = process.env.SPONSOR_URL || ''
+if (SPONSOR_URL && !/^https?:\/\//i.test(SPONSOR_URL)) {
+  console.warn(`SPONSOR_URL ignored (must start with http:// or https://): ${SPONSOR_URL}`)
+  SPONSOR_URL = ''
+}
 
 // ── Optional OIDC / Single Sign-On ────────────────────────────────────────
 //
