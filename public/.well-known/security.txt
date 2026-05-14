@@ -6,5 +6,7 @@
 # overlay a custom copy onto the container's /app/static/.well-known/.
 
 Contact: https://github.com/DL6ER/stift/security/advisories/new
-Expires: 2027-12-31T23:59:59Z
+# RFC 9116 recommends an Expires value less than a year out so the file is
+# kept fresh by the maintainer. Renew at least every twelve months.
+Expires: 2026-12-31T23:59:59Z
 Preferred-Languages: en, de
