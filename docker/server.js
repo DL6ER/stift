@@ -1051,9 +1051,17 @@ const server = createServer(async (req, res) => {
       const member = data.members?.find(m => m.username === user.username)
       if (!member || (member.role !== 'owner' && member.role !== 'editor')) return json(res, { error: 'Insufficient permissions' }, 403)
       const { username, role, wrappedKey } = await parseBody(req)
-      if (!username || !wrappedKey) return json(res, { error: 'Username and wrappedKey required' }, 400)
-      if (data.members.find(m => m.username === username)) return json(res, { error: 'Already a member' }, 409)
-      data.members.push({ username, role: role || 'editor', wrappedKey, addedBy: user.username, addedAt: new Date().toISOString() })
+      const uname = sanitizeUsername(username)
+      if (!uname || typeof wrappedKey !== 'string' || !wrappedKey) {
+        return json(res, { error: 'Username and wrappedKey required' }, 400)
+      }
+      if (!getUser(uname)) return json(res, { error: 'Member account not found' }, 404)
+      if (data.members.find(m => m.username === uname)) return json(res, { error: 'Already a member' }, 409)
+      // Only owners may grant the owner role. Editors can add editors and
+      // viewers; anything else falls back to editor.
+      const requested = role === 'owner' || role === 'editor' || role === 'viewer' ? role : 'editor'
+      const finalRole = requested === 'owner' && member.role !== 'owner' ? 'editor' : requested
+      data.members.push({ username: uname, role: finalRole, wrappedKey, addedBy: user.username, addedAt: new Date().toISOString() })
       await writeFile(join(DATA_DIR, 'shared', `${memberMatch[1]}.json`), JSON.stringify(data))
       return json(res, { ok: true })
     }
