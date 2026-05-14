@@ -642,7 +642,12 @@ const server = createServer(async (req, res) => {
       }
       const claims = tokenSet.claims()
       const sub = claims.sub
-      const email = (claims.email || '').toLowerCase().trim() || null
+      // Only trust the email claim when the IdP marks it as verified. An
+      // unverified email must not be used to link to an existing local
+      // account (see findOrCreateUser): otherwise a permissive IdP could
+      // assert a victim's email and take over their row.
+      const rawEmail = (claims.email || '').toLowerCase().trim() || null
+      const email = rawEmail && claims.email_verified === true ? rawEmail : null
       if (!sub) {
         res.writeHead(302, { Location: '/?oidc_error=no_sub' })
         res.end()

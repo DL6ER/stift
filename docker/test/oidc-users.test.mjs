@@ -55,3 +55,32 @@ test('findOrCreateUser updates email when email changes for same sub', () => {
   assert.equal(created, false)
   assert.equal(user.email, 'new@example.com')
 })
+
+test('findOrCreateUser refuses to rebind an already-OIDC-linked row by email', () => {
+  const db = freshDb()
+  const first = findOrCreateUser(db, { externalId: 'sub-victim', email: 'shared@example.com' })
+  assert.equal(first.created, true)
+
+  // A second IdP asserts the same email with a different sub. The existing
+  // row already has an external_oidc_sub, so it must not be rebound.
+  const second = findOrCreateUser(db, { externalId: 'sub-attacker', email: 'shared@example.com' })
+  assert.equal(second.created, true)
+  assert.notEqual(second.user.username, first.user.username)
+
+  const victimRow = db.prepare('SELECT * FROM users WHERE username = ?').get(first.user.username)
+  assert.equal(victimRow.external_oidc_sub, 'sub-victim', 'victim sub unchanged')
+})
+
+test('findOrCreateUser links by email only when existing row has no sub', () => {
+  const db = freshDb()
+  // Simulate a pre-existing password-flow account (external_oidc_sub NULL).
+  db.prepare(`
+    INSERT INTO users (username, auth_token, role, max_projects, can_share_projects, created_at, email)
+    VALUES (?, ?, 'user', 50, 1, ?, ?)
+  `).run('legacy-user', 'plain-token', new Date().toISOString(), 'legacy@example.com')
+
+  const { user, created } = findOrCreateUser(db, { externalId: 'sub-legacy', email: 'legacy@example.com' })
+  assert.equal(created, false)
+  assert.equal(user.username, 'legacy-user')
+  assert.equal(user.external_oidc_sub, 'sub-legacy')
+})

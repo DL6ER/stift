@@ -77,10 +77,16 @@ export function findOrCreateUser(db, { externalId, email = null, username = null
     return { user: row, created: false }
   }
 
-  // Secondary lookup: link existing account by email.
+  // Secondary lookup: link an existing local account to this OIDC identity
+  // by email -- but only when the local row has no external_oidc_sub yet.
+  // Without that guard a second IdP (or a malicious one) could rebind a
+  // user's row to its own sub by asserting the victim's email, effectively
+  // hijacking the account on every subsequent callback. Linking is meant
+  // for upgrading a password-flow account to OIDC; it is not a mechanism
+  // for switching the OIDC binding silently.
   if (email) {
     const existing = stmtByEmail.get(email)
-    if (existing) {
+    if (existing && !existing.external_oidc_sub) {
       stmtSetSub.run(externalId, email, existing.username)
       return { user: stmtByName.get(existing.username), created: false }
     }
