@@ -35,7 +35,7 @@ The `users` table:
 
 The `invitations` table follows the same shape with `token`, `max_projects`, `can_share_projects`, `expires_at`, `consumed_at`, `consumed_by`, `created_at`.
 
-The admin API (`PUT /api/admin/users/:username`) can mutate `role`, `maxProjects`, and `canShareProjects`. On first startup the server auto-imports any pre-existing `/data/users/*.json` files from older deployments and renames them to `*.migrated`.
+Operator-side user mutations (`role`, `maxProjects`, `canShareProjects`) go through direct SQLite `UPDATE` statements or through the invitation flow; the OSS build does not expose an HTTP admin API. On first startup the server auto-imports any pre-existing `/data/users/*.json` files from older deployments and renames them to `*.migrated`.
 
 ### Shared-project membership lives inside the JSON blob
 
