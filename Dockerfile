@@ -1,4 +1,10 @@
-FROM node:20-alpine AS build
+# Base image pinned by content digest. The `20-alpine` tag is a moving
+# target -- a malicious mirror or a tag-overwrite could otherwise quietly
+# swap the build base out from under us. Refresh the digest with
+#   docker pull node:20-alpine && \
+#     docker inspect --format='{{index .RepoDigests 0}}' node:20-alpine
+# and update CHANGELOG.md when bumping it.
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS build
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm install --ignore-scripts
@@ -8,13 +14,13 @@ ENV DEVMODE=${DEVMODE}
 RUN npm run build
 
 # Compile native modules (better-sqlite3) in a stage that has build tools
-FROM node:20-alpine AS api-deps
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS api-deps
 RUN apk add --no-cache python3 make g++
 WORKDIR /api
 COPY docker/package.json ./
 RUN npm install --omit=dev --no-package-lock
 
-FROM node:20-alpine
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
 RUN apk add --no-cache nginx openssl
 
 # Non-root operation.

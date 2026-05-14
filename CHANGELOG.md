@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+**Supply chain:**
+- Dockerfile base image pinned by content digest (`node:20-alpine@sha256:fb4cd1...`). Refresh quarterly with `docker pull node:20-alpine && docker inspect --format='{{index .RepoDigests 0}}' node:20-alpine` and note the new digest here.
+
 ## v2.0.0
 
 **New features:**
