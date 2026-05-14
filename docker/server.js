@@ -186,6 +186,13 @@ const CORS_ORIGINS = (process.env.CORS_ORIGINS || '')
 // small and backups simple.
 await mkdir(DATA_DIR, { recursive: true })
 const db = new Database(join(DATA_DIR, 'stift.db'))
+// auto_vacuum can only be set on an empty database -- it has to land before
+// the first CREATE TABLE below. On fresh deployments incremental_vacuum
+// then reclaims free pages produced by deletes (consumed invitations,
+// purged outbox rows, rotated auth_tokens). Existing DBs need a one-time
+// manual VACUUM to convert; the daily incremental_vacuum below becomes a
+// no-op on those until the operator runs it.
+db.pragma('auto_vacuum = INCREMENTAL')
 db.pragma('journal_mode = WAL')
 db.pragma('foreign_keys = ON')
 db.exec(`
@@ -443,6 +450,29 @@ setInterval(() => { retryOidcWebhookOutbox().catch(() => {}) }, 60_000)
 // the table does not accumulate forever on a long-running deployment.
 setInterval(() => {
   try { purgeDelivered(db) } catch (e) { console.warn('[oidc] outbox purge failed:', e.message) }
+}, 24 * 60 * 60 * 1000).unref()
+
+// Daily purge of consumed invitations older than 90 days. Matches the
+// outbox-purge cadence and keeps the invitations table from accumulating
+// records that have no further use after the first consumption.
+const INVITATION_RETENTION_MS = 90 * 24 * 60 * 60 * 1000
+setInterval(() => {
+  try {
+    const cutoff = new Date(Date.now() - INVITATION_RETENTION_MS).toISOString()
+    const n = db.prepare('DELETE FROM invitations WHERE consumed_at IS NOT NULL AND consumed_at < ?').run(cutoff).changes
+    if (n > 0) console.log(`[db] purged ${n} consumed invitation(s) older than 90 days`)
+  } catch (e) {
+    console.warn('[db] invitations purge failed:', e.message)
+  }
+}, 24 * 60 * 60 * 1000).unref()
+
+// Daily incremental vacuum reclaims free pages produced by deletes (consumed
+// invitations, purged outbox rows, rotated auth_tokens). The PRAGMA only
+// has work when auto_vacuum=INCREMENTAL is active on the database -- fresh
+// DBs see this from creation, legacy DBs become eligible after a one-time
+// manual VACUUM.
+setInterval(() => {
+  try { db.prepare('PRAGMA incremental_vacuum').run() } catch (e) { console.warn('[db] incremental_vacuum failed:', e.message) }
 }, 24 * 60 * 60 * 1000).unref()
 
 // Atomic invite consumption: validate, create user, mark invite consumed.
