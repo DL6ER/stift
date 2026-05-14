@@ -13,6 +13,7 @@ import { TopBar } from './panels/TopBar'
 import { useEditorStore } from './stores/editorStore'
 import { useProjectStore } from './stores/projectStore'
 import { useAuthStore } from './stores/authStore'
+import { validateProject } from './lib/projectValidate'
 import { ToolType, Annotation } from './types'
 import { useClipboardPaste } from './lib/clipboard'
 import { WelcomeOverlay } from './components/WelcomeOverlay'
@@ -327,10 +328,17 @@ export default function App() {
         return
       }
       file.text().then((text) => {
-        const project = JSON.parse(text)
+        const parsed = JSON.parse(text)
+        // External input -- validate the shape before letting it flow into
+        // Konva. A corrupt or hostile .stift file otherwise propagates
+        // garbage deep into the canvas pipeline and shows up as confusing
+        // runtime TypeErrors rather than a clean rejection.
+        const project = validateProject(parsed)
         useProjectStore.getState().loadProject(project)
         useProjectStore.getState().pushHistory()
-      }).catch(() => {})
+      }).catch((err) => {
+        console.warn('Refusing to load .stift file:', err?.message ?? err)
+      })
     }
     const prevent = (e: DragEvent) => e.preventDefault()
     window.addEventListener('drop', handleDrop)
