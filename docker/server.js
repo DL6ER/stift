@@ -821,8 +821,10 @@ const server = createServer(async (req, res) => {
       clearCookie(res, 'oidc_nonce')
       clearCookie(res, 'oidc_verifier')
       if (!state || !nonce || !codeVerifier) {
-        res.writeHead(400, { 'Content-Type': 'text/plain' })
-        res.end('Ungültige oder abgelaufene Anmelde-Sitzung. Bitte erneut versuchen.')
+        // The state/nonce/verifier cookies expire after 10 minutes; a slow
+        // IdP round-trip or a second tab opening the flow can wipe them.
+        res.writeHead(302, { Location: '/?oidc_error=expired_session' })
+        res.end()
         return
       }
       let tokenSet
@@ -834,8 +836,27 @@ const server = createServer(async (req, res) => {
           code_verifier: codeVerifier,
         })
       } catch (e) {
-        console.error('[oidc] callback error:', e.message)
-        res.writeHead(302, { Location: '/?oidc_error=callback_failed' })
+        // Map openid-client's structured error codes to a small, stable set
+        // of fragment hints the SPA can branch on for targeted UX. The
+        // strings come from RFC 6749 / OpenID Connect Core, so no IdP-
+        // internal detail leaks; unknown codes fall back to the generic
+        // bucket.
+        const KNOWN_OIDC_ERRORS = new Set([
+          'invalid_grant',
+          'invalid_request',
+          'invalid_client',
+          'invalid_scope',
+          'unauthorized_client',
+          'unsupported_grant_type',
+          'access_denied',
+          'server_error',
+          'temporarily_unavailable',
+        ])
+        const code = typeof e?.error === 'string' && KNOWN_OIDC_ERRORS.has(e.error)
+          ? e.error
+          : 'callback_failed'
+        console.error(`[oidc] callback error (${code}):`, e.message)
+        res.writeHead(302, { Location: `/?oidc_error=${encodeURIComponent(code)}` })
         res.end()
         return
       }
