@@ -501,6 +501,24 @@ function json(res, data, status = 200) {
   res.end(JSON.stringify(data))
 }
 
+// Atomic file replace. Plain writeFile open()s O_TRUNC and then streams
+// content into the live target, so a SIGKILL mid-write (OOM, docker kill,
+// host crash) leaves a half-written or empty file behind. By writing to
+// a sibling .tmp and then renaming, the target either stays at its
+// previous good state or is fully replaced; the rename is atomic on the
+// same POSIX filesystem. randomUUID in the temp name avoids collisions
+// when two callers race on the same target.
+async function writeFileAtomic(path, content) {
+  const tmp = `${path}.${randomUUID()}.tmp`
+  try {
+    await writeFile(tmp, content)
+    await rename(tmp, path)
+  } catch (e) {
+    try { await unlink(tmp) } catch {}
+    throw e
+  }
+}
+
 function parseBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = []
@@ -1035,7 +1053,7 @@ const server = createServer(async (req, res) => {
       body.owner = user.username
       const dir = userProjectDir(user.username)
       await mkdir(dir, { recursive: true })
-      await writeFile(join(dir, `${id}.json`), JSON.stringify(body))
+      await writeFileAtomic(join(dir, `${id}.json`), JSON.stringify(body))
       return json(res, { id }, 201)
     }
 
@@ -1059,7 +1077,7 @@ const server = createServer(async (req, res) => {
         const body = await parseBody(req)
         body.updatedAt = new Date().toISOString()
         body.owner = user.username
-        await writeFile(join(userProjectDir(user.username), `${projectMatch[1]}.json`), JSON.stringify(body))
+        await writeFileAtomic(join(userProjectDir(user.username), `${projectMatch[1]}.json`), JSON.stringify(body))
         return json(res, { ok: true })
       }
       if (req.method === 'DELETE') {
@@ -1134,7 +1152,7 @@ const server = createServer(async (req, res) => {
       const sharedDir = join(DATA_DIR, 'shared')
       await mkdir(sharedDir, { recursive: true })
       const project = { ...body, owner: user.username, updatedAt: new Date().toISOString(), members }
-      await writeFile(join(sharedDir, `${id}.json`), JSON.stringify(project))
+      await writeFileAtomic(join(sharedDir, `${id}.json`), JSON.stringify(project))
       return json(res, { id }, 201)
     }
     // Helper: read+parse a shared project file by id, returning null if it
@@ -1169,7 +1187,7 @@ const server = createServer(async (req, res) => {
         if (!member || member.role === 'viewer') return json(res, { error: 'Edit access required' }, 403)
         const body = await parseBody(req)
         body.updatedAt = new Date().toISOString(); body.members = existing.members; body.owner = existing.owner
-        await writeFile(join(DATA_DIR, 'shared', `${sharedMatch[1]}.json`), JSON.stringify(body))
+        await writeFileAtomic(join(DATA_DIR, 'shared', `${sharedMatch[1]}.json`), JSON.stringify(body))
         return json(res, { ok: true })
       }
       if (req.method === 'DELETE') {
@@ -1203,7 +1221,7 @@ const server = createServer(async (req, res) => {
       const requested = role === 'owner' || role === 'editor' || role === 'viewer' ? role : 'editor'
       const finalRole = requested === 'owner' && member.role !== 'owner' ? 'editor' : requested
       data.members.push({ username: uname, role: finalRole, wrappedKey, addedBy: user.username, addedAt: new Date().toISOString() })
-      await writeFile(join(DATA_DIR, 'shared', `${memberMatch[1]}.json`), JSON.stringify(data))
+      await writeFileAtomic(join(DATA_DIR, 'shared', `${memberMatch[1]}.json`), JSON.stringify(data))
       return json(res, { ok: true })
     }
     const rmMemberMatch = path.match(/^\/api\/shared\/([^/]+)\/members\/([^/]+)$/)
@@ -1215,7 +1233,7 @@ const server = createServer(async (req, res) => {
       if (!data) return json(res, { error: 'Shared project not found' }, 404)
       if (!data.members?.find(m => m.username === user.username && m.role === 'owner')) return json(res, { error: 'Owner access required' }, 403)
       data.members = data.members.filter(m => m.username !== decodeURIComponent(rmMemberMatch[2]))
-      await writeFile(join(DATA_DIR, 'shared', `${rmMemberMatch[1]}.json`), JSON.stringify(data))
+      await writeFileAtomic(join(DATA_DIR, 'shared', `${rmMemberMatch[1]}.json`), JSON.stringify(data))
       return json(res, { ok: true })
     }
 
