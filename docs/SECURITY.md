@@ -30,6 +30,24 @@ When using server storage, Stift encrypts all project data client-side before it
 - Your encryption key exists only in your browser's memory during your session
 - **Password loss = data loss.** There is no password recovery. This is by design: any recovery mechanism would require the server to access your encryption key, which would break the zero-knowledge guarantee.
 
+### SSO accounts: set your encryption passphrase immediately
+
+When you first sign in via Single Sign-On (SSO), Stift asks you to pick a
+**separate** encryption passphrase. The ciphertext produced from that
+passphrase is stored once on the server and is then immutable: the
+server refuses to overwrite it on later requests, so an attacker who
+somehow obtains your session cookie cannot swap your encryption blob
+out from under you.
+
+The flip side of that design is the *first* write: until you have set
+your passphrase, anyone holding your session can set it for you. In
+practice that requires either physical access to your unlocked browser
+or a successful XSS against the SPA (locked down by the strict CSP),
+but the safest habit is to **set your passphrase the very first time
+you sign in** and to **sign out of shared devices afterwards**. If you
+ever need to change the passphrase, the operator has to clear the
+stored verification ciphertext for your account first.
+
 ### Secure project sharing
 
 Shared projects use per-project encryption keys:
