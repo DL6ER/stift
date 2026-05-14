@@ -5,7 +5,9 @@
 If you believe you have found a security issue in Stift, please **do not
 open a public GitHub issue**. Instead, open a private security advisory via
 GitHub's "Report a vulnerability" link on the repository's Security tab, or
-send a description to the contact listed on the project page.
+use the contact published in
+[`/.well-known/security.txt`](public/.well-known/security.txt) on any
+running Stift instance (RFC 9116).
 
 Please include enough detail for us to reproduce the issue: affected
 version, deployment mode (default Docker, proxied behind Caddy, or bare
