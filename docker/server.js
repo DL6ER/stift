@@ -99,6 +99,15 @@ if (OIDC_ENABLED) {
   }
 }
 
+// A webhook URL without a signing secret would still send "signed" payloads,
+// but the HMAC would be computed with an empty key -- predictable for anyone
+// who knows the body shape, so the receiver could not actually authenticate
+// the sender. Refuse to start in that state instead of pretending integrity.
+if (OIDC_PROVISION_WEBHOOK_URL && !OIDC_PROVISION_WEBHOOK_SECRET) {
+  console.error('OIDC_PROVISION_WEBHOOK_URL is set but OIDC_PROVISION_WEBHOOK_SECRET is empty')
+  process.exit(1)
+}
+
 // CORS allowlist. Comma-separated list of allowed origin values for the
 // `Access-Control-Allow-Origin` response header on cross-origin XHR /
 // fetch requests. The default is empty (same-origin only), which is
