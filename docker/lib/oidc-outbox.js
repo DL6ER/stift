@@ -61,3 +61,15 @@ export function purgeDelivered(db, now = Math.floor(Date.now() / 1000), retentio
   return db.prepare('DELETE FROM oidc_webhook_outbox WHERE delivered_at IS NOT NULL AND delivered_at < ?')
     .run(cutoff).changes
 }
+
+// purgePermanentlyFailed removes rows that have reached the 10-attempt cap
+// without being delivered. Once the retry worker abandons a row it stays in
+// the table forever -- useful for operator inspection in the days after the
+// failure, but pointless to keep around for years. Default retention is
+// longer than purgeDelivered's so operators can still find evidence weeks
+// after the receiver gave up.
+export function purgePermanentlyFailed(db, now = Math.floor(Date.now() / 1000), retentionSeconds = 90 * 24 * 3600) {
+  const cutoff = now - retentionSeconds
+  return db.prepare('DELETE FROM oidc_webhook_outbox WHERE delivered_at IS NULL AND attempts >= 10 AND created_at < ?')
+    .run(cutoff).changes
+}

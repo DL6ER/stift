@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
-import { initOutboxSchema, enqueueWebhook, dueRetries, markDelivered, scheduleRetry, purgeDelivered } from '../lib/oidc-outbox.js'
+import { initOutboxSchema, enqueueWebhook, dueRetries, markDelivered, scheduleRetry, purgeDelivered, purgePermanentlyFailed } from '../lib/oidc-outbox.js'
 
 function freshDb() {
   const db = new Database(':memory:')
@@ -60,6 +60,26 @@ test('dueRetries excludes rows with attempts >= 10 (permanently failed)', () => 
   db.prepare('UPDATE oidc_webhook_outbox SET next_attempt_at = ? WHERE id = ?').run(NOW - 1, row.id)
   const after = dueRetries(db, NOW)
   assert.equal(after.length, 0, 'permanently failed row must not be retried')
+})
+
+test('purgePermanentlyFailed drops rows with attempts >= 10 older than retention, keeps still-retrying', () => {
+  const db = freshDb()
+  // A row stamped 100 days old and stuck at 10 attempts: permanently failed, ripe for purge.
+  enqueueWebhook(db, '{"event":"stuck-old"}',   'sig-old',    NOW - 100 * 24 * 3600)
+  // A row stamped 5 days old at 10 attempts: failed, but recent; keep it for operator inspection.
+  enqueueWebhook(db, '{"event":"stuck-recent"}', 'sig-recent', NOW - 5  * 24 * 3600)
+  // A row at 5 attempts (still retrying): never purged regardless of age.
+  enqueueWebhook(db, '{"event":"retrying"}',     'sig-retry',  NOW - 100 * 24 * 3600)
+  const rows = db.prepare('SELECT id, payload FROM oidc_webhook_outbox ORDER BY id').all()
+  scheduleRetry(db, rows[0].id, 10, NOW - 100 * 24 * 3600)
+  scheduleRetry(db, rows[1].id, 10, NOW - 5  * 24 * 3600)
+  scheduleRetry(db, rows[2].id, 5,  NOW - 100 * 24 * 3600)
+
+  const removed = purgePermanentlyFailed(db, NOW)
+  assert.equal(removed, 1, 'only the 100-day-old permanently-failed row is purged')
+
+  const remaining = db.prepare('SELECT payload FROM oidc_webhook_outbox ORDER BY id').all().map(r => r.payload)
+  assert.deepEqual(remaining, ['{"event":"stuck-recent"}', '{"event":"retrying"}'])
 })
 
 test('purgeDelivered drops rows older than retention window, keeps recent and pending', () => {

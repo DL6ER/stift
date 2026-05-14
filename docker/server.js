@@ -6,7 +6,7 @@ import Database from 'better-sqlite3'
 import { Issuer, generators } from 'openid-client'
 import { initUserSchema, findOrCreateUser } from './lib/oidc-users.js'
 import { hashAuthToken, verifyAuthToken, verifyDummyAuthToken, isHashedAuthToken } from './lib/auth-token.js'
-import { initOutboxSchema, enqueueWebhook, dueRetries, markDelivered, scheduleRetry, purgeDelivered } from './lib/oidc-outbox.js'
+import { initOutboxSchema, enqueueWebhook, dueRetries, markDelivered, scheduleRetry, purgeDelivered, purgePermanentlyFailed } from './lib/oidc-outbox.js'
 
 // Server configuration. Adjust as needed for your deployment.
 const DATA_DIR = process.env.DATA_DIR || '/data'
@@ -466,8 +466,12 @@ setInterval(() => { retryOidcWebhookOutbox().catch(() => {}) }, 60_000)
 
 // Daily purge of delivered outbox rows older than the retention window so
 // the table does not accumulate forever on a long-running deployment.
+// purgePermanentlyFailed handles the asymmetric case where a row hit the
+// 10-attempt cap without being delivered: useful for short-term operator
+// inspection, but pointless to keep for years.
 setInterval(() => {
   try { purgeDelivered(db) } catch (e) { console.warn('[oidc] outbox purge failed:', e.message) }
+  try { purgePermanentlyFailed(db) } catch (e) { console.warn('[oidc] outbox failed-purge error:', e.message) }
 }, 24 * 60 * 60 * 1000).unref()
 
 // Daily purge of consumed invitations older than 90 days. Matches the
