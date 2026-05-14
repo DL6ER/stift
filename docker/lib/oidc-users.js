@@ -3,6 +3,32 @@
 import { randomBytes, createHash } from 'crypto'
 import { hashAuthToken } from './auth-token.js'
 
+// Prepared statements are cached per Database instance so each call to
+// findOrCreateUser doesn't rebuild them. better-sqlite3 has its own internal
+// statement cache, but routing every call through that map and through the
+// V8 string-interning path on the SQL source is still cheaper to skip. A
+// WeakMap lets in-memory test databases get garbage-collected normally.
+const _stmtCache = new WeakMap()
+function stmts(db) {
+  let s = _stmtCache.get(db)
+  if (!s) {
+    s = {
+      byOidcSub:  db.prepare('SELECT * FROM users WHERE external_oidc_sub = ?'),
+      byEmail:    db.prepare('SELECT * FROM users WHERE email = ? LIMIT 1'),
+      byName:     db.prepare('SELECT * FROM users WHERE username = ?'),
+      setSub:     db.prepare('UPDATE users SET external_oidc_sub = ?, email = ? WHERE username = ?'),
+      setEmail:   db.prepare('UPDATE users SET email = ? WHERE username = ?'),
+      insertUser: db.prepare(
+        'INSERT INTO users (username, auth_token, role, max_projects, can_share_projects, created_at, external_oidc_sub, email)'
+        + ' VALUES (?, ?, \'user\', ?, 1, ?, ?, ?)'
+        + ' ON CONFLICT(external_oidc_sub) DO UPDATE SET email = excluded.email'
+      ),
+    }
+    _stmtCache.set(db, s)
+  }
+  return s
+}
+
 // initUserSchema sets up the users table and the OIDC-related columns/index.
 // Safe to call multiple times (all DDL is idempotent).
 export function initUserSchema(db) {
@@ -61,18 +87,15 @@ export function initUserSchema(db) {
 //   username     -- optional preferred username hint; falls back to sso-<hash>
 //   maxProjects  -- default project quota for new accounts (default 50)
 export function findOrCreateUser(db, { externalId, email = null, username = null, maxProjects = 50 }) {
-  const stmtByOidcSub = db.prepare('SELECT * FROM users WHERE external_oidc_sub = ?')
-  const stmtByEmail   = db.prepare('SELECT * FROM users WHERE email = ? LIMIT 1')
-  const stmtByName    = db.prepare('SELECT * FROM users WHERE username = ?')
-  const stmtSetSub    = db.prepare('UPDATE users SET external_oidc_sub = ?, email = ? WHERE username = ?')
+  const s = stmts(db)
 
   // Fast path: existing user with this OIDC subject.
-  let row = stmtByOidcSub.get(externalId)
+  let row = s.byOidcSub.get(externalId)
   if (row) {
     // Keep email in sync if it changed.
     if (email && row.email !== email) {
-      db.prepare('UPDATE users SET email = ? WHERE username = ?').run(email, row.username)
-      row = stmtByOidcSub.get(externalId)
+      s.setEmail.run(email, row.username)
+      row = s.byOidcSub.get(externalId)
     }
     return { user: row, created: false }
   }
@@ -85,10 +108,10 @@ export function findOrCreateUser(db, { externalId, email = null, username = null
   // for upgrading a password-flow account to OIDC; it is not a mechanism
   // for switching the OIDC binding silently.
   if (email) {
-    const existing = stmtByEmail.get(email)
+    const existing = s.byEmail.get(email)
     if (existing && !existing.external_oidc_sub) {
-      stmtSetSub.run(externalId, email, existing.username)
-      return { user: stmtByName.get(existing.username), created: false }
+      s.setSub.run(externalId, email, existing.username)
+      return { user: s.byName.get(existing.username), created: false }
     }
   }
 
@@ -96,7 +119,7 @@ export function findOrCreateUser(db, { externalId, email = null, username = null
   const base = createHash('sha256').update(externalId).digest('hex').slice(0, 12)
   let candidate = username || `sso-${base}`
   let suffix = 0
-  while (stmtByName.get(candidate)) {
+  while (s.byName.get(candidate)) {
     suffix++
     candidate = `sso-${base}-${suffix}`
   }
@@ -109,14 +132,9 @@ export function findOrCreateUser(db, { externalId, email = null, username = null
   // exactly one row is ever created per externalId.
   // The auth_token column stores the hashed value so a DB leak doesn't
   // hand out usable bearer tokens. The plaintext is never persisted.
-  db.prepare(`
-    INSERT INTO users
-      (username, auth_token, role, max_projects, can_share_projects, created_at, external_oidc_sub, email)
-    VALUES (?, ?, 'user', ?, 1, ?, ?, ?)
-    ON CONFLICT(external_oidc_sub) DO UPDATE SET email = excluded.email
-  `).run(candidate, hashAuthToken(authToken), maxProjects, now, externalId, email)
+  s.insertUser.run(candidate, hashAuthToken(authToken), maxProjects, now, externalId, email)
 
-  const inserted = stmtByOidcSub.get(externalId)
+  const inserted = s.byOidcSub.get(externalId)
   const created = inserted.username === candidate
   return { user: inserted, created }
 }
