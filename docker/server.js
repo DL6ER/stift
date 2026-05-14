@@ -1148,7 +1148,13 @@ const server = createServer(async (req, res) => {
         } catch {}
       }
       projects.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-      return json(res, projects)
+      // Defensive cap: prevent an instance with thousands of shared projects
+      // from returning a multi-megabyte JSON array on every listing call.
+      // The newest 500 are still plenty for the UI; older entries can be
+      // surfaced via a future search/pagination endpoint.
+      const SHARED_LIST_CAP = 500
+      const capped = projects.length > SHARED_LIST_CAP ? projects.slice(0, SHARED_LIST_CAP) : projects
+      return json(res, capped)
     }
     if (path === '/api/shared' && req.method === 'POST') {
       const user = await authenticate(req)
