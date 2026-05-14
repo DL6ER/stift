@@ -19,9 +19,20 @@
 const PBKDF2_ITERATIONS = 600000
 const KEY_LENGTH = 256 // bits
 
+// NFC-normalise the username before feeding it into the salt. Two visually
+// identical strings can carry different UTF-8 byte sequences (precomposed
+// "Müller" vs. "Müller" with a combining diaeresis); without NFC,
+// a user logging in from a system that emits the decomposed form would
+// derive a different key from the same password and lock themselves out
+// of their own data.
+function canonicalUsername(username: string): string {
+  return username.normalize('NFC').toLowerCase().trim()
+}
+
 /** Derive a 256-bit AES key from password + username using PBKDF2 + HKDF */
 export async function deriveKey(password: string, username: string): Promise<CryptoKey> {
   const enc = new TextEncoder()
+  const uname = canonicalUsername(username)
 
   // Step 1: Import password as PBKDF2 key material
   const passwordKey = await crypto.subtle.importKey(
@@ -36,7 +47,7 @@ export async function deriveKey(password: string, username: string): Promise<Cry
   const pbkdf2Bits = await crypto.subtle.deriveBits(
     {
       name: 'PBKDF2',
-      salt: enc.encode(`stift-e2e-${username.toLowerCase().trim()}`),
+      salt: enc.encode(`stift-e2e-${uname}`),
       iterations: PBKDF2_ITERATIONS,
       hash: 'SHA-256',
     },
@@ -57,7 +68,7 @@ export async function deriveKey(password: string, username: string): Promise<Cry
     {
       name: 'HKDF',
       hash: 'SHA-512',
-      salt: enc.encode(`stift-pq-${username.toLowerCase().trim()}`),
+      salt: enc.encode(`stift-pq-${uname}`),
       info: enc.encode('stift-aes256gcm-v1'),
     },
     hkdfKey,
@@ -151,6 +162,7 @@ export async function unwrapProjectKey(wrappedKey: string, userKey: CryptoKey): 
 /** Derive an auth token (not the encryption key!) for server authentication */
 export async function deriveAuthToken(password: string, username: string): Promise<string> {
   const enc = new TextEncoder()
+  const uname = canonicalUsername(username)
 
   const key = await crypto.subtle.importKey(
     'raw',
@@ -164,7 +176,7 @@ export async function deriveAuthToken(password: string, username: string): Promi
   const bits = await crypto.subtle.deriveBits(
     {
       name: 'PBKDF2',
-      salt: enc.encode(`stift-auth-${username.toLowerCase().trim()}`),
+      salt: enc.encode(`stift-auth-${uname}`),
       iterations: PBKDF2_ITERATIONS,
       hash: 'SHA-256',
     },
