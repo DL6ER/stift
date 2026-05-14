@@ -1255,6 +1255,12 @@ const server = createServer(async (req, res) => {
       // every named user must be an existing account, and every entry must
       // carry a wrappedKey. Without this an attacker could spam fake "shared
       // with you" entries into arbitrary inboxes.
+      // Every member -- including the original owner inserted here -- gets
+      // the same addedBy/addedAt audit pair as members added later through
+      // POST /:id/members. Without this the creator's own row had no
+      // provenance fields, so a later DELETE or audit could not see when
+      // the project went live.
+      const nowIso = new Date().toISOString()
       let members
       if (Array.isArray(body.members)) {
         if (body.members.length === 0) return json(res, { error: 'members must include the caller' }, 400)
@@ -1267,7 +1273,7 @@ const server = createServer(async (req, res) => {
           }
           if (!getUser(uname)) return json(res, { error: `member not found: ${uname}` }, 400)
           const role = m.role === 'owner' || m.role === 'editor' || m.role === 'viewer' ? m.role : 'editor'
-          normalised.push({ username: uname, role, wrappedKey: m.wrappedKey })
+          normalised.push({ username: uname, role, wrappedKey: m.wrappedKey, addedBy: user.username, addedAt: nowIso })
         }
         if (!normalised.some(m => m.username === user.username)) {
           return json(res, { error: 'members must include the caller' }, 400)
@@ -1277,7 +1283,7 @@ const server = createServer(async (req, res) => {
         if (typeof body.wrappedKey !== 'string' || !body.wrappedKey) {
           return json(res, { error: 'wrappedKey required' }, 400)
         }
-        members = [{ username: user.username, role: 'owner', wrappedKey: body.wrappedKey }]
+        members = [{ username: user.username, role: 'owner', wrappedKey: body.wrappedKey, addedBy: user.username, addedAt: nowIso }]
       }
       const id = randomUUID()
       const sharedDir = join(DATA_DIR, 'shared')
