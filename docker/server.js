@@ -168,17 +168,25 @@ const stmtConsumeInvite = db.prepare(
 )
 
 // ── OIDC client (discovered lazily on first use) ──────────────────────────
-let _oidcClient = null
+//
+// Cached per `redirectUri` so a stray early call with the wrong scheme
+// (e.g. an internal http healthcheck before the reverse proxy injected
+// X-Forwarded-Proto) doesn't pin the client to a stale redirect URI for
+// the rest of the process lifetime.
+let _oidcIssuer = null
+const _oidcClients = new Map()
 async function getOidcClient(redirectUri) {
-  if (_oidcClient) return _oidcClient
-  const issuer = await Issuer.discover(OIDC_ISSUER_URL)
-  _oidcClient = new issuer.Client({
+  const cached = _oidcClients.get(redirectUri)
+  if (cached) return cached
+  if (!_oidcIssuer) _oidcIssuer = await Issuer.discover(OIDC_ISSUER_URL)
+  const client = new _oidcIssuer.Client({
     client_id: OIDC_CLIENT_ID,
     client_secret: OIDC_CLIENT_SECRET,
     redirect_uris: [redirectUri],
     response_types: ['code'],
   })
-  return _oidcClient
+  _oidcClients.set(redirectUri, client)
+  return client
 }
 
 // Signed cookie helpers (no external dep -- manual HMAC-SHA256 signing).
