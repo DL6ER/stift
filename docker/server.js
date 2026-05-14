@@ -350,35 +350,55 @@ async function fireProvisionWebhook(payload) {
 // Exponential backoff: min(2^attempts * 30, 3600) seconds.
 // After 10 attempts the entry is considered permanently failed
 // (attempts >= 10, delivered_at stays NULL) and is not retried again.
+//
+// Each fetch is bounded by WEBHOOK_FETCH_TIMEOUT_MS so a slow or hostile
+// receiver cannot stall the loop indefinitely. _outboxWorkerRunning acts
+// as a mutex against the 60-second setInterval starting a second worker
+// on top of a still-running one -- without it both would call dueRetries,
+// see the same not-yet-delivered rows, and POST duplicate webhooks.
+const WEBHOOK_FETCH_TIMEOUT_MS = 30_000
+let _outboxWorkerRunning = false
 async function retryOidcWebhookOutbox() {
   if (!OIDC_PROVISION_WEBHOOK_URL) return
-  const now = Math.floor(Date.now() / 1000)
-  const rows = dueRetries(db, now)
-  for (const row of rows) {
-    try {
-      const resp = await fetch(OIDC_PROVISION_WEBHOOK_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-stift-oss-signature': `sha256=${row.signature}`,
-        },
-        body: row.payload,
-      })
-      if (resp.ok) {
-        markDelivered(db, row.id)
-      } else {
-        throw new Error(`HTTP ${resp.status}`)
-      }
-    } catch (e) {
-      const attempts = row.attempts + 1
-      scheduleRetry(db, row.id, attempts, now)
-      const backoff = Math.min(Math.pow(2, attempts) * 30, 3600)
-      if (attempts >= 10) {
-        console.error(`[oidc] provision webhook permanently failed after ${attempts} attempts (outbox id=${row.id}):`, e.message)
-      } else {
-        console.warn(`[oidc] provision webhook attempt ${attempts} failed, next in ${backoff}s (outbox id=${row.id}):`, e.message)
+  if (_outboxWorkerRunning) return
+  _outboxWorkerRunning = true
+  try {
+    const now = Math.floor(Date.now() / 1000)
+    const rows = dueRetries(db, now)
+    for (const row of rows) {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), WEBHOOK_FETCH_TIMEOUT_MS)
+      try {
+        const resp = await fetch(OIDC_PROVISION_WEBHOOK_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-stift-oss-signature': `sha256=${row.signature}`,
+          },
+          body: row.payload,
+          signal: controller.signal,
+        })
+        if (resp.ok) {
+          markDelivered(db, row.id)
+        } else {
+          throw new Error(`HTTP ${resp.status}`)
+        }
+      } catch (e) {
+        const attempts = row.attempts + 1
+        scheduleRetry(db, row.id, attempts, now)
+        const backoff = Math.min(Math.pow(2, attempts) * 30, 3600)
+        const reason = e.name === 'AbortError' ? `timeout after ${WEBHOOK_FETCH_TIMEOUT_MS}ms` : e.message
+        if (attempts >= 10) {
+          console.error(`[oidc] provision webhook permanently failed after ${attempts} attempts (outbox id=${row.id}):`, reason)
+        } else {
+          console.warn(`[oidc] provision webhook attempt ${attempts} failed, next in ${backoff}s (outbox id=${row.id}):`, reason)
+        }
+      } finally {
+        clearTimeout(timer)
       }
     }
+  } finally {
+    _outboxWorkerRunning = false
   }
 }
 
