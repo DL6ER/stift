@@ -22,4 +22,5 @@ services:
       - FOOTER_LINKS=${FOOTER_LINKS:-}                      # JSON array of {label,url} rendered in the app footer
       - SPONSOR_URL=${SPONSOR_URL:-}                        # when set + ALLOW_REGISTRATION=false, auth dialog shows a sponsor CTA
       - CORS_ORIGINS=${CORS_ORIGINS:-}                      # comma-separated allowlist; empty = same-origin only
+      - STIFT_PUBLIC_URL=${STIFT_PUBLIC_URL:-}               # trusted public origin used to build OIDC redirect_uri
     restart: unless-stopped

@@ -15,6 +15,7 @@ All settings are passed via environment variables to the Docker container.
 | `FOOTER_LINKS` | `[]` | JSON array of `{label,url}` rendered in the app footer (e.g. Impressum / Datenschutz pages hosted elsewhere) |
 | `SPONSOR_URL` | unset | When set AND `ALLOW_REGISTRATION=false`, the sign-in dialog shows a "Become a sponsor" CTA linking here instead of "Registration is disabled" |
 | `CORS_ORIGINS` | unset | Comma-separated allowlist of origins for cross-origin XHR/fetch (e.g. `https://app.example,https://staging.example`). Empty (the default) means **same-origin only**: no CORS headers are set, so cross-origin requests are blocked by the browser. Set explicitly to `*` only if you understand the risk; that echoes any caller's `Origin` back. |
+| `STIFT_PUBLIC_URL` | unset | Trusted public origin of the deployment, e.g. `https://stift.example.com`. When set, the OIDC handlers build the `redirect_uri` from this value instead of the per-request `Host` / `X-Forwarded-Host` headers. Recommended for any public deployment with OIDC enabled. |
 
 ## OpenID Connect (optional)
 
@@ -31,7 +32,9 @@ Set `OIDC_ENABLED=true` to delegate login to an external identity provider. When
 | `OIDC_PROVISION_WEBHOOK_URL` | unset | When set, a `POST` with `{sso_user_id, stift_user_id, email}` is sent on first-time login of a new user. Failures are queued in an on-disk outbox and retried with exponential backoff. |
 | `OIDC_PROVISION_WEBHOOK_SECRET` | unset | HMAC-SHA256 signing key for the provision webhook. Required if `OIDC_PROVISION_WEBHOOK_URL` is set; sent as `x-stift-oss-signature: sha256=<hex>`. |
 
-When `OIDC_ENABLED=true` and any of `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` is missing, the server aborts at startup.
+When `OIDC_ENABLED=true` and any of `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` is missing, the server aborts at startup. The server also aborts when `OIDC_PROVISION_WEBHOOK_URL` is set without an `OIDC_PROVISION_WEBHOOK_SECRET`, so a misconfigured deployment cannot send "signed" payloads with an empty HMAC key.
+
+For any public OIDC deployment also set `STIFT_PUBLIC_URL` (see the table at the top of this file) so the `redirect_uri` derives from a trusted constant instead of the per-request `Host` header.
 
 ## Example: public instance with externally-hosted legal pages and signup
 

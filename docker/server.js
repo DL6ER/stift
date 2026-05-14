@@ -88,6 +88,29 @@ const OIDC_LOGIN_LABEL = process.env.OIDC_LOGIN_LABEL || 'Mit Single Sign-On anm
 const OIDC_PROVISION_WEBHOOK_URL = process.env.OIDC_PROVISION_WEBHOOK_URL || ''
 const OIDC_PROVISION_WEBHOOK_SECRET = process.env.OIDC_PROVISION_WEBHOOK_SECRET || ''
 
+// Public base URL of the deployment, e.g. "https://stift.example.com". When
+// set, the OIDC login + callback handlers derive the redirect_uri from this
+// trusted value instead of the per-request Host / X-Forwarded-Host headers.
+// Recommended for public deployments: a hostile client cannot then trick
+// the server into building an authorize URL or a session cookie under an
+// attacker-controlled host even if the proxy forwards a manipulated Host.
+const STIFT_PUBLIC_URL = (process.env.STIFT_PUBLIC_URL || '').replace(/\/$/, '')
+let _publicProto = null
+let _publicHost = null
+if (STIFT_PUBLIC_URL) {
+  try {
+    const u = new URL(STIFT_PUBLIC_URL)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+      throw new Error('protocol must be http or https')
+    }
+    _publicProto = u.protocol.replace(':', '')
+    _publicHost = u.host
+  } catch (e) {
+    console.error(`STIFT_PUBLIC_URL is not a valid http(s) URL: ${e.message}`)
+    process.exit(1)
+  }
+}
+
 if (OIDC_ENABLED) {
   const missing = []
   if (!OIDC_ISSUER_URL) missing.push('OIDC_ISSUER_URL')
@@ -634,8 +657,8 @@ const server = createServer(async (req, res) => {
     //                   finds or creates the local user, and redirects
     //                   the browser back to the SPA root (/).
     if (OIDC_ENABLED && path === '/oidc/login' && req.method === 'GET') {
-      const proto = req.headers['x-forwarded-proto'] || 'http'
-      const host = req.headers['x-forwarded-host'] || req.headers.host || `localhost:${PORT}`
+      const proto = _publicProto || req.headers['x-forwarded-proto'] || 'http'
+      const host = _publicHost || req.headers['x-forwarded-host'] || req.headers.host || `localhost:${PORT}`
       const redirectUri = `${proto}://${host}${OIDC_REDIRECT_PATH}`
       const client = await getOidcClient(redirectUri)
       const state = generators.state()
@@ -660,8 +683,8 @@ const server = createServer(async (req, res) => {
     }
 
     if (OIDC_ENABLED && path === OIDC_REDIRECT_PATH && req.method === 'GET') {
-      const proto = req.headers['x-forwarded-proto'] || 'http'
-      const host = req.headers['x-forwarded-host'] || req.headers.host || `localhost:${PORT}`
+      const proto = _publicProto || req.headers['x-forwarded-proto'] || 'http'
+      const host = _publicHost || req.headers['x-forwarded-host'] || req.headers.host || `localhost:${PORT}`
       const redirectUri = `${proto}://${host}${OIDC_REDIRECT_PATH}`
       const client = await getOidcClient(redirectUri)
       const cookies = parseCookies(req)
