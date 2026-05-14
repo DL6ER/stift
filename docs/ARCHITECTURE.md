@@ -36,3 +36,25 @@ The `users` table:
 The `invitations` table follows the same shape with `token`, `max_projects`, `can_share_projects`, `expires_at`, `consumed_at`, `consumed_by`, `created_at`.
 
 The admin API (`PUT /api/admin/users/:username`) can mutate `role`, `maxProjects`, and `canShareProjects`. On first startup the server auto-imports any pre-existing `/data/users/*.json` files from older deployments and renames them to `*.migrated`.
+
+### Shared-project membership lives inside the JSON blob
+
+Shared projects keep their membership list inline in
+`/data/shared/<id>.json` rather than in a separate SQL table. That
+keeps the storage shape uniform with solo projects (one file = one
+project) and makes membership read at the same time as the encrypted
+data, so there is no second round-trip on open.
+
+The tradeoff is a small TOCTOU window between concurrent
+`PUT /api/shared/:id` (data update) and `POST /api/shared/:id/members`
+(invite). Both endpoints read the blob, modify their respective field
+sets, and write the result; the writes do not coordinate, so a member
+added between the read and write of a data update can be silently
+overwritten. Project content cannot be corrupted (writes are atomic
+via tmp + rename), but a pending invitation may need to be re-issued.
+For typical sharing patterns (one operator inviting users while
+nobody is editing) the window is essentially zero.
+
+A migration to a dedicated `shared_members` table is on the roadmap;
+it would also unlock per-member audit columns without rewriting the
+encrypted body.
