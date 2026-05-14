@@ -645,12 +645,26 @@ const RATE_LIMIT_MAX = 20         // burst capacity per IP
 const RATE_LIMIT_REFILL_MS = 3000 // one token added every 3s (~20/min steady state)
 const rateBuckets = new Map()
 function clientIp(req) {
-  // Behind nginx (which sets X-Real-IP) the request comes from 127.0.0.1.
-  // Trust the proxy header only when the connection is loopback so a
-  // hostile client on the public side can't spoof it.
+  // Behind nginx the request comes from 127.0.0.1 (same container). Trust
+  // the proxy headers only when the connection is loopback so a hostile
+  // client on the public side can't spoof.
+  //
+  // Prefer X-Forwarded-For when nginx propagates it -- the leftmost entry
+  // is the original client even when this nginx sits behind another
+  // reverse proxy like Caddy. X-Real-IP, set by nginx itself, only ever
+  // holds the immediate upstream's address (which would be Caddy in the
+  // proxied deployment), so it's a fallback for the rare case the chain
+  // is misconfigured and X-Forwarded-For is missing entirely.
   const remote = req.socket?.remoteAddress || ''
-  if ((remote === '127.0.0.1' || remote === '::1' || remote === '::ffff:127.0.0.1') && req.headers['x-real-ip']) {
-    return String(req.headers['x-real-ip']).split(',')[0].trim()
+  if (remote === '127.0.0.1' || remote === '::1' || remote === '::ffff:127.0.0.1') {
+    const fwd = req.headers['x-forwarded-for']
+    if (fwd) {
+      const first = String(fwd).split(',')[0].trim()
+      if (first) return first
+    }
+    if (req.headers['x-real-ip']) {
+      return String(req.headers['x-real-ip']).split(',')[0].trim()
+    }
   }
   return remote || 'unknown'
 }
