@@ -28,6 +28,20 @@ export function isHashedAuthToken(stored) {
   return typeof stored === 'string' && stored.startsWith(PREFIX)
 }
 
+// A precomputed hash of a value the caller will never actually send. Used
+// by verifyDummyAuthToken to spend the same SHA-256 + timingSafeEqual on
+// the "user does not exist" branch as on the "user exists, wrong token"
+// branch, so a remote attacker cannot tell the two apart by timing.
+const DUMMY_STORED = hashAuthToken('stift-dummy-auth-token-never-issued')
+
+// Run the same compare work as verifyAuthToken but always return false.
+// Callers use this when the username lookup miss would otherwise short-
+// circuit the verify call and leak existence through a faster response.
+export function verifyDummyAuthToken(plain) {
+  verifyAuthToken(DUMMY_STORED, typeof plain === 'string' ? plain : '')
+  return false
+}
+
 // Constant-time verify. Accepts both hashed (h$...) and legacy plaintext
 // values so existing DBs keep working until they get rewritten on next login.
 export function verifyAuthToken(stored, plain) {

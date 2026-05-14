@@ -5,7 +5,7 @@ import { randomUUID, randomBytes, timingSafeEqual, createHmac } from 'crypto'
 import Database from 'better-sqlite3'
 import { Issuer, generators } from 'openid-client'
 import { initUserSchema, findOrCreateUser } from './lib/oidc-users.js'
-import { hashAuthToken, verifyAuthToken, isHashedAuthToken } from './lib/auth-token.js'
+import { hashAuthToken, verifyAuthToken, verifyDummyAuthToken, isHashedAuthToken } from './lib/auth-token.js'
 import { initOutboxSchema, enqueueWebhook, dueRetries, markDelivered, scheduleRetry } from './lib/oidc-outbox.js'
 
 // Server configuration. Adjust as needed for your deployment.
@@ -881,7 +881,11 @@ const server = createServer(async (req, res) => {
       const uname = sanitizeUsername(username)
       if (!uname) return json(res, { error: 'Invalid username' }, 400)
       const user = getUser(uname)
-      if (!user || typeof authToken !== 'string' || !verifyAuthToken(user.authToken, authToken)) {
+      if (!user) {
+        verifyDummyAuthToken(authToken)
+        return json(res, { error: 'Invalid username or password' }, 401)
+      }
+      if (typeof authToken !== 'string' || !verifyAuthToken(user.authToken, authToken)) {
         return json(res, { error: 'Invalid username or password' }, 401)
       }
       maybeUpgradeStoredAuthToken(user.username, user.authToken, authToken)
@@ -904,7 +908,13 @@ const server = createServer(async (req, res) => {
       // Use the constant-time helper rather than !==. The auth token is the
       // user's secret credential, and byte-by-byte short-circuit comparison
       // would expose a (small) timing oracle.
-      if (!user || typeof authToken !== 'string' || !verifyAuthToken(user.authToken, authToken)) {
+      // Spend the same compute on the "no such user" branch so the response
+      // timing does not distinguish existing from non-existing accounts.
+      if (!user) {
+        verifyDummyAuthToken(authToken)
+        return json(res, { error: 'Invalid credentials' }, 401)
+      }
+      if (typeof authToken !== 'string' || !verifyAuthToken(user.authToken, authToken)) {
         return json(res, { error: 'Invalid credentials' }, 401)
       }
       maybeUpgradeStoredAuthToken(user.username, user.authToken, authToken)
