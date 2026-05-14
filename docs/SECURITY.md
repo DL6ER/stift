@@ -25,10 +25,28 @@ When using server storage, Stift encrypts all project data client-side before it
 
 ### What this means
 
-- The server operator **cannot** read your stored projects
-- A database breach exposes only encrypted blobs and auth tokens; no plaintext data
+- The server operator **cannot** read your project content (images, annotations, dimensions, ROIs, connectors)
+- A database breach exposes only encrypted blobs and auth-token hashes; no plaintext project content
 - Your encryption key exists only in your browser's memory during your session
 - **Password loss = data loss.** There is no password recovery. This is by design: any recovery mechanism would require the server to access your encryption key, which would break the zero-knowledge guarantee.
+
+### What is visible to the server
+
+For server-stored projects the SPA sends a payload of the form
+`{ encrypted: true, name, updatedAt, data: ciphertext }`. The server
+therefore sees:
+
+- the **project name** (used for the listing UI; not inside the encrypted blob)
+- the **update timestamp** (the server would learn this from the file mtime anyway)
+- the **ciphertext size**, which gives a rough hint about image count and resolution
+- the **owner username** and any **shared members**, since the server gates access on them
+
+Everything inside `data` -- images, annotations, canvas dimensions, ROIs,
+connectors -- is encrypted and unreadable to the server. If the project
+name itself is sensitive, save locally instead of to the server. A
+future revision is expected to move the name into the encrypted body
+and surface only a separately-encrypted `nameCiphertext` for the
+listing.
 
 ### SSO accounts: set your encryption passphrase immediately
 
