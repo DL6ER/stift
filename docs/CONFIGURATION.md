@@ -32,6 +32,7 @@ Set `OIDC_ENABLED=true` to delegate login to an external identity provider. When
 | `OIDC_LOGIN_LABEL` | `Mit Single Sign-On anmelden` | Text shown on the SSO button in the auth dialog. |
 | `OIDC_PROVISION_WEBHOOK_URL` | unset | When set, a `POST` with `{sso_user_id, stift_user_id, email}` is sent on first-time login of a new user. Failures are queued in an on-disk outbox and retried with exponential backoff. |
 | `OIDC_PROVISION_WEBHOOK_SECRET` | unset | HMAC-SHA256 signing key for the provision webhook. Required if `OIDC_PROVISION_WEBHOOK_URL` is set; sent as `x-stift-oss-signature: sha256=<hex>`. |
+| `SESSION_SECRET` | random per startup | HMAC key for OIDC session cookies. When unset, a fresh 32-byte random value is generated on every process start, which invalidates every active OIDC session on restart. Set explicitly for HA or rolling-restart deployments where sessions must survive a process restart; pick a high-entropy value (`openssl rand -hex 32`) and treat it as a long-lived secret. |
 
 When `OIDC_ENABLED=true` and any of `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` is missing, the server aborts at startup. The server also aborts when `OIDC_PROVISION_WEBHOOK_URL` is set without an `OIDC_PROVISION_WEBHOOK_SECRET`, so a misconfigured deployment cannot send "signed" payloads with an empty HMAC key.
 
