@@ -6,7 +6,7 @@ import Database from 'better-sqlite3'
 import { Issuer, generators } from 'openid-client'
 import { initUserSchema, findOrCreateUser } from './lib/oidc-users.js'
 import { hashAuthToken, verifyAuthToken, verifyDummyAuthToken, isHashedAuthToken } from './lib/auth-token.js'
-import { initOutboxSchema, enqueueWebhook, dueRetries, markDelivered, scheduleRetry } from './lib/oidc-outbox.js'
+import { initOutboxSchema, enqueueWebhook, dueRetries, markDelivered, scheduleRetry, purgeDelivered } from './lib/oidc-outbox.js'
 
 // Server configuration. Adjust as needed for your deployment.
 const DATA_DIR = process.env.DATA_DIR || '/data'
@@ -361,6 +361,12 @@ async function retryOidcWebhookOutbox() {
 
 // Background worker: retry due outbox entries every 60 seconds.
 setInterval(() => { retryOidcWebhookOutbox().catch(() => {}) }, 60_000)
+
+// Daily purge of delivered outbox rows older than the retention window so
+// the table does not accumulate forever on a long-running deployment.
+setInterval(() => {
+  try { purgeDelivered(db) } catch (e) { console.warn('[oidc] outbox purge failed:', e.message) }
+}, 24 * 60 * 60 * 1000).unref()
 
 // Atomic invite consumption: validate, create user, mark invite consumed.
 // Throws an Error with .code on any failure so the route can map to HTTP.

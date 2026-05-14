@@ -50,3 +50,14 @@ export function scheduleRetry(db, id, attempts, now = Math.floor(Date.now() / 10
   db.prepare('UPDATE oidc_webhook_outbox SET attempts = ?, next_attempt_at = ? WHERE id = ?')
     .run(attempts, nextAttempt, id)
 }
+
+// purgeDelivered removes successfully delivered rows older than the cutoff
+// so the outbox table does not grow without bound across a long-running
+// deployment. Returns the number of rows deleted.
+// Default retention: 30 days, matching the typical operator window for
+// reconciling against the receiver's logs after the fact.
+export function purgeDelivered(db, now = Math.floor(Date.now() / 1000), retentionSeconds = 30 * 24 * 3600) {
+  const cutoff = now - retentionSeconds
+  return db.prepare('DELETE FROM oidc_webhook_outbox WHERE delivered_at IS NOT NULL AND delivered_at < ?')
+    .run(cutoff).changes
+}

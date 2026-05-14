@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
-import { initOutboxSchema, enqueueWebhook, dueRetries, markDelivered, scheduleRetry } from '../lib/oidc-outbox.js'
+import { initOutboxSchema, enqueueWebhook, dueRetries, markDelivered, scheduleRetry, purgeDelivered } from '../lib/oidc-outbox.js'
 
 function freshDb() {
   const db = new Database(':memory:')
@@ -60,4 +60,20 @@ test('dueRetries excludes rows with attempts >= 10 (permanently failed)', () => 
   db.prepare('UPDATE oidc_webhook_outbox SET next_attempt_at = ? WHERE id = ?').run(NOW - 1, row.id)
   const after = dueRetries(db, NOW)
   assert.equal(after.length, 0, 'permanently failed row must not be retried')
+})
+
+test('purgeDelivered drops rows older than retention window, keeps recent and pending', () => {
+  const db = freshDb()
+  enqueueWebhook(db, '{"event":"old"}',    'sig-old',    NOW - 40 * 24 * 3600)
+  enqueueWebhook(db, '{"event":"recent"}', 'sig-recent', NOW - 5  * 24 * 3600)
+  enqueueWebhook(db, '{"event":"pending"}','sig-pending', NOW)
+  const ids = db.prepare('SELECT id, payload FROM oidc_webhook_outbox ORDER BY id').all()
+  markDelivered(db, ids[0].id, NOW - 40 * 24 * 3600)
+  markDelivered(db, ids[1].id, NOW - 5  * 24 * 3600)
+
+  const removed = purgeDelivered(db, NOW)
+  assert.equal(removed, 1, 'only the 40-day-old delivered row is purged')
+
+  const remaining = db.prepare('SELECT payload FROM oidc_webhook_outbox ORDER BY id').all().map(r => r.payload)
+  assert.deepEqual(remaining, ['{"event":"recent"}', '{"event":"pending"}'])
 })
