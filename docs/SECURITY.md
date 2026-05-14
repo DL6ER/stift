@@ -56,7 +56,7 @@ Shared projects use per-project encryption keys:
 2. Project data is encrypted with the Project Key
 3. The Project Key is then **wrapped** (encrypted) separately for each member using their personal encryption key
 4. When adding a member, the inviter decrypts the Project Key with their own key, then re-encrypts it for the invitee
-5. The server stores only encrypted data and wrapped keys; it cannot access any project or derive any key
+5. The server stores encrypted data and per-member wrapped keys
 
 ```
 Project Data --encrypt--> Ciphertext (stored on server)
@@ -74,6 +74,27 @@ Removing a member = deleting their wrapped key copy. They can no longer decrypt 
 - **Owner**: full control, can invite/remove members, delete project
 - **Editor**: can modify project data, invite new members
 - **Viewer**: read-only access
+
+#### Invitation threat model
+
+Without an asymmetric public key per user, the inviter cannot wrap the
+Project Key directly for an invitee they do not share a password with.
+Stift bridges that gap with a **temporary invitation key** derived from
+`(projectId, inviteeUsername)`. The invitee's wrapped key is stored
+under this derivation until the invitee opens the project for the first
+time; on that open the SPA re-wraps the Project Key with the invitee's
+personal encryption key and persists the new wrapped copy. From that
+moment on the wrapped key is bound to the invitee's password only.
+
+Until the first open, the invitation wrap is derivable from publicly
+known inputs. Server-side access control (only listed members can read
+the shared blob) is the primary protection during that window; if you
+do not trust the server operator with the contents of *not-yet-opened
+invitations*, hold off on inviting the user, or have them open the
+project quickly after the invite.
+
+A future revision will replace the derivation with a per-user public
+key registered at account creation, eliminating the window entirely.
 
 ### Post-quantum security in detail
 

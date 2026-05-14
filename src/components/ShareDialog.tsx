@@ -156,7 +156,7 @@ export function ShareDialog({ onClose }: Props) {
         <div className="px-6 py-3 space-y-2">
           <div className="bg-emerald-950/30 border border-emerald-800/40 rounded-lg px-3 py-2 text-xs text-emerald-400/80 flex gap-2">
             <Shield size={14} className="shrink-0 mt-0.5" />
-            <span>End-to-end encrypted. Each shared project has its own key, wrapped individually for each member. The server cannot read shared data.</span>
+            <span>End-to-end encrypted. Each shared project has its own key, wrapped individually for each member. Pending invitations use a derived key until the invitee opens the project for the first time -- see docs/SECURITY.md for the threat model.</span>
           </div>
           {!sharingEnabled && (
             <div
