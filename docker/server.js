@@ -461,7 +461,24 @@ function parseBody(req) {
       if (totalSize > maxBytes) { req.destroy(); reject(new Error(`Payload too large (max ${MAX_PROJECT_SIZE_MB} MB)`)); return }
       chunks.push(c)
     })
-    req.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString())) } catch (e) { reject(e) } })
+    req.on('end', () => {
+      try {
+        const parsed = JSON.parse(Buffer.concat(chunks).toString())
+        // Routes destructure the body as if it were an object. Without this
+        // guard JSON like "null", "42" or "\"x\"" turns into a TypeError on
+        // destructuring that surfaces to the client as a 500 -- misleading,
+        // since the real problem is a malformed request.
+        if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          const e = new Error('Request body must be a JSON object')
+          e.code = 'invalid_body'
+          reject(e); return
+        }
+        resolve(parsed)
+      } catch (e) {
+        if (!e.code) e.code = 'invalid_body'
+        reject(e)
+      }
+    })
     req.on('error', reject)
   })
 }
@@ -1164,6 +1181,9 @@ const server = createServer(async (req, res) => {
     if (err.message?.includes('too large')) {
       res.writeHead(413, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: err.message }))
+    } else if (err.code === 'invalid_body') {
+      res.writeHead(400, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'Invalid request body' }))
     } else {
       res.writeHead(500, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: 'Internal server error' }))
