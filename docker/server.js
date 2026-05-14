@@ -5,7 +5,7 @@ import { randomUUID, randomBytes, timingSafeEqual, createHmac } from 'crypto'
 import Database from 'better-sqlite3'
 import { Issuer, generators } from 'openid-client'
 import { initUserSchema, findOrCreateUser } from './lib/oidc-users.js'
-import { hashAuthToken, verifyAuthToken, verifyDummyAuthToken, isHashedAuthToken } from './lib/auth-token.js'
+import { hashAuthToken, verifyAuthToken, verifyDummyAuthToken, isCurrentHashedAuthToken } from './lib/auth-token.js'
 import { initOutboxSchema, enqueueWebhook, dueRetries, markDelivered, scheduleRetry, purgeDelivered, purgePermanentlyFailed } from './lib/oidc-outbox.js'
 
 // Server configuration. Adjust as needed for your deployment.
@@ -371,11 +371,13 @@ function rotateAuthToken(username) {
   return plain
 }
 
-// After a successful password compare, the stored value is still legacy
-// plaintext from a pre-hash deployment. Rewrite it as a hash in place so
-// the upgrade happens lazily on the user's next login.
+// After a successful credential compare, migrate the stored value forward
+// if it is not already in the current hash format. This covers both pre-
+// hash deployments (plaintext rows) and the intermediate unversioned h$
+// rows written between the original auth-hash commit and the versioning
+// commit. Either way the next login lazy-upgrades the row.
 function maybeUpgradeStoredAuthToken(username, stored, plain) {
-  if (isHashedAuthToken(stored)) return
+  if (isCurrentHashedAuthToken(stored)) return
   db.prepare('UPDATE users SET auth_token = ? WHERE username = ?').run(hashAuthToken(plain), username)
 }
 function getSession(req) {
