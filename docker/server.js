@@ -804,7 +804,7 @@ const server = createServer(async (req, res) => {
       const uname = sanitizeUsername(username)
       if (!uname) return json(res, { error: 'Invalid username' }, 400)
       const user = getUser(uname)
-      if (!user || typeof authToken !== 'string' || !safeEqual(user.auth_token, authToken)) {
+      if (!user || typeof authToken !== 'string' || !safeEqual(user.authToken, authToken)) {
         return json(res, { error: 'Invalid username or password' }, 401)
       }
       const inv = stmtGetInvite.get(invite)
