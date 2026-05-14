@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { deriveKey, deriveAuthToken, encrypt, decrypt } from '../lib/crypto'
 import { registerWithInvite as apiRegisterWithInvite, applyInvite as apiApplyInvite } from '../lib/api'
+import { clearAutosave } from '../lib/autosave'
 
 // Known plaintext encrypted with the user's passphrase-derived key. The
 // SPA stores the ciphertext server-side and re-derives + decrypts it on
@@ -262,5 +263,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.removeItem('stift-auth-username')
     localStorage.removeItem('stift-auth-token')
     localStorage.removeItem('stift-auth-source')
+    // Drop the in-flight autosave snapshot so the next user on the same
+    // browser does not get a restore prompt for the previous user's work.
+    clearAutosave()
   },
 }))

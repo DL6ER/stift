@@ -12,6 +12,7 @@ import { EditorCanvas } from './canvas/EditorCanvas'
 import { TopBar } from './panels/TopBar'
 import { useEditorStore } from './stores/editorStore'
 import { useProjectStore } from './stores/projectStore'
+import { useAuthStore } from './stores/authStore'
 import { ToolType, Annotation } from './types'
 import { useClipboardPaste } from './lib/clipboard'
 import { WelcomeOverlay } from './components/WelcomeOverlay'
@@ -65,18 +66,38 @@ export default function App() {
   // Auto-save and recovery
   useEffect(() => {
     startAutosave()
-    const saved = getAutosave()
-    if (saved && saved.project.annotations?.length > 0) {
+    let prompted = false
+    const tryRestore = () => {
+      if (prompted) return
+      const saved = getAutosave()
+      if (!saved) return
+      if (!(saved.project.annotations?.length > 0)) return
       const age = Date.now() - new Date(saved.time).getTime()
-      if (age < 86400000) { // less than 24 hours old
-        const restore = confirm(`Unsaved work found from ${new Date(saved.time).toLocaleString()}.\n\nRestore it?`)
-        if (restore) {
-          useProjectStore.getState().loadProject(saved.project)
-          useProjectStore.getState().pushHistory()
-        }
+      if (age >= 86400000) { // older than 24h -- garbage collect, do not prompt
         clearAutosave()
+        return
       }
+      // Only restore a snapshot that belongs to the current session's
+      // user. Anonymous matches anonymous; logged-in matches the same
+      // username. Legacy untagged snapshots (saved.username === '__legacy__')
+      // never auto-restore -- we can't tell which user produced them and a
+      // shared browser must not leak the previous user's canvas content.
+      const currentUsername = useAuthStore.getState().username ?? null
+      if (saved.username !== currentUsername) return
+      prompted = true
+      const restore = confirm(`Unsaved work found from ${new Date(saved.time).toLocaleString()}.\n\nRestore it?`)
+      if (restore) {
+        useProjectStore.getState().loadProject(saved.project)
+        useProjectStore.getState().pushHistory()
+      }
+      clearAutosave()
     }
+    tryRestore()
+    // Re-check when the auth state changes -- e.g. a returning user who
+    // reloads the SPA before authStore has rehydrated, then signs in and
+    // matches a still-pending snapshot under their username.
+    const unsub = useAuthStore.subscribe(tryRestore)
+    return () => { unsub() }
   }, [])
 
   useEffect(() => {
