@@ -960,10 +960,39 @@ const server = createServer(async (req, res) => {
       if (!user) return json(res, { error: 'Authentication required' }, 401)
       if (!user.canShareProjects) return json(res, { error: 'Shared projects are not enabled for this account.' }, 403)
       const body = await parseBody(req)
+      // Validate the optional initial members array: the caller must be in
+      // it (otherwise they immediately lose access to their own project),
+      // every named user must be an existing account, and every entry must
+      // carry a wrappedKey. Without this an attacker could spam fake "shared
+      // with you" entries into arbitrary inboxes.
+      let members
+      if (Array.isArray(body.members)) {
+        if (body.members.length === 0) return json(res, { error: 'members must include the caller' }, 400)
+        const normalised = []
+        for (const m of body.members) {
+          const uname = sanitizeUsername(m?.username)
+          if (!uname) return json(res, { error: 'invalid member username' }, 400)
+          if (typeof m.wrappedKey !== 'string' || !m.wrappedKey) {
+            return json(res, { error: 'each member needs a wrappedKey' }, 400)
+          }
+          if (!getUser(uname)) return json(res, { error: `member not found: ${uname}` }, 400)
+          const role = m.role === 'owner' || m.role === 'editor' || m.role === 'viewer' ? m.role : 'editor'
+          normalised.push({ username: uname, role, wrappedKey: m.wrappedKey })
+        }
+        if (!normalised.some(m => m.username === user.username)) {
+          return json(res, { error: 'members must include the caller' }, 400)
+        }
+        members = normalised
+      } else {
+        if (typeof body.wrappedKey !== 'string' || !body.wrappedKey) {
+          return json(res, { error: 'wrappedKey required' }, 400)
+        }
+        members = [{ username: user.username, role: 'owner', wrappedKey: body.wrappedKey }]
+      }
       const id = randomUUID()
       const sharedDir = join(DATA_DIR, 'shared')
       await mkdir(sharedDir, { recursive: true })
-      const project = { ...body, owner: user.username, updatedAt: new Date().toISOString(), members: body.members || [{ username: user.username, role: 'owner', wrappedKey: body.wrappedKey }] }
+      const project = { ...body, owner: user.username, updatedAt: new Date().toISOString(), members }
       await writeFile(join(sharedDir, `${id}.json`), JSON.stringify(project))
       return json(res, { id }, 201)
     }
