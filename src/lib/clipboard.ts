@@ -6,6 +6,22 @@
 import { useEffect } from 'react'
 import { useProjectStore } from '../stores/projectStore'
 
+// Allowlist of bitmap MIME types we accept from clipboard paste and file
+// drop. SVG is deliberately excluded -- it would render safely inside an
+// <img> element today, but keeping the input surface to known bitmap
+// formats removes a whole class of defense-in-depth questions (foreignObject,
+// script tags, external href references) for free.
+export const ACCEPTED_IMAGE_MIME = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
+])
+
+export function isAcceptedImageType(type: string): boolean {
+  return ACCEPTED_IMAGE_MIME.has(type)
+}
+
 export function useClipboardPaste() {
   const addImage = useProjectStore((s) => s.addImage)
   const pushHistory = useProjectStore((s) => s.pushHistory)
@@ -18,7 +34,7 @@ export function useClipboardPaste() {
       if (!items) return
 
       for (const item of Array.from(items)) {
-        if (item.type.startsWith('image/')) {
+        if (isAcceptedImageType(item.type)) {
           e.preventDefault()
           const blob = item.getAsFile()
           if (!blob) continue

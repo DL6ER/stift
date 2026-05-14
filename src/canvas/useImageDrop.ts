@@ -5,7 +5,7 @@
 
 import { useEffect } from 'react'
 import { useProjectStore } from '../stores/projectStore'
-import { loadImageFromFile } from '../lib/clipboard'
+import { loadImageFromFile, isAcceptedImageType } from '../lib/clipboard'
 
 export function useImageDrop(containerRef: React.RefObject<HTMLDivElement | null>) {
   const addImage = useProjectStore((s) => s.addImage)
@@ -26,7 +26,7 @@ export function useImageDrop(containerRef: React.RefObject<HTMLDivElement | null
       e.preventDefault()
       const files = Array.from(e.dataTransfer?.files ?? [])
       for (const file of files) {
-        if (!file.type.startsWith('image/')) continue
+        if (!isAcceptedImageType(file.type)) continue
         const imgData = await loadImageFromFile(file)
         pushHistory()
         let w = imgData.width
