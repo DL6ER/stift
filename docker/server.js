@@ -11,17 +11,40 @@ import { initOutboxSchema, enqueueWebhook, dueRetries, markDelivered, scheduleRe
 // Server configuration. Adjust as needed for your deployment.
 const DATA_DIR = process.env.DATA_DIR || '/data'
 const PORT = 3001
+
+// parseEnvInt reads an integer env var with a default and clamps it into the
+// allowed range. A non-numeric value (e.g. MAX_PROJECT_SIZE_MB="fifteen")
+// falls back to the default with a warning instead of silently yielding NaN
+// -- which would make every subsequent comparison false and effectively
+// disable the corresponding limit.
+function parseEnvInt(name, fallback, { min, max } = {}) {
+  const raw = process.env[name]
+  if (raw === undefined || raw === '') return fallback
+  const n = parseInt(raw, 10)
+  if (!Number.isFinite(n)) {
+    console.warn(`${name}: not a valid integer (${raw}), using default ${fallback}`)
+    return fallback
+  }
+  let clamped = n
+  if (typeof min === 'number' && clamped < min) clamped = min
+  if (typeof max === 'number' && clamped > max) clamped = max
+  if (clamped !== n) {
+    console.warn(`${name}: ${n} clamped to ${clamped} (range ${min ?? '-'}..${max ?? '-'})`)
+  }
+  return clamped
+}
+
 // When true, the server will gzip project data on upload and decompress on
 // download. This can save bandwidth and storage at the cost of some (client!)
 // CPU time. Adjust based on your typical project sizes and server resources.
 const COMPRESS_UPLOADS = (process.env.COMPRESS_UPLOADS || 'true').toLowerCase() !== 'false'
 // Reject uploads larger than this size (in megabytes) to prevent abuse and keep
 // the server responsive. Adjust as needed based on typical project sizes and
-// available resources.
-const MAX_PROJECT_SIZE_MB = parseInt(process.env.MAX_PROJECT_SIZE_MB || '15', 10)
+// available resources. Clamped to 1..1024 MB.
+const MAX_PROJECT_SIZE_MB = parseEnvInt('MAX_PROJECT_SIZE_MB', 15, { min: 1, max: 1024 })
 // Per-user project quota. Set to 0 to disable server storage for everyone (use
-// local save instead).
-const DEFAULT_MAX_PROJECTS_PER_USER = parseInt(process.env.MAX_PROJECTS_PER_USER || '50', 10)
+// local save instead). Clamped to 0..100000.
+const DEFAULT_MAX_PROJECTS_PER_USER = parseEnvInt('MAX_PROJECTS_PER_USER', 50, { min: 0, max: 100000 })
 // When false, /api/auth/register is rejected. Existing users can still sign
 // in. Set this to false on a public instance that should not accept new
 // accounts: if no users exist, server-side storage is effectively disabled
@@ -294,10 +317,7 @@ const SESSION_COOKIE = 'stift_sid'
 // Operators can shorten or lengthen the OIDC session lifetime via the
 // SESSION_MAX_AGE_HOURS env var. Clamped to 1..720h (1h..30d) so a typo
 // cannot disable sessions instantly or pin them open for years.
-const _rawSessionHours = parseInt(process.env.SESSION_MAX_AGE_HOURS || '24', 10)
-const SESSION_MAX_AGE_HOURS = Number.isFinite(_rawSessionHours)
-  ? Math.min(720, Math.max(1, _rawSessionHours))
-  : 24
+const SESSION_MAX_AGE_HOURS = parseEnvInt('SESSION_MAX_AGE_HOURS', 24, { min: 1, max: 720 })
 const SESSION_MAX_AGE_MS = SESSION_MAX_AGE_HOURS * 60 * 60 * 1000
 
 // Periodic sweep: getSession deletes expired entries on access, but
