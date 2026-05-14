@@ -37,6 +37,25 @@ When `OIDC_ENABLED=true` and any of `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_C
 
 For any public OIDC deployment also set `STIFT_PUBLIC_URL` (see the table at the top of this file) so the `redirect_uri` derives from a trusted constant instead of the per-request `Host` header.
 
+### Known limitations of the OIDC flow
+
+- **Concurrent sign-ins in two tabs collide.** `/oidc/login` stores its
+  `state`, `nonce`, and PKCE verifier in cookies on the deployment origin.
+  Cookies are per-origin, not per-tab, so opening a second sign-in flow
+  while the first is still at the identity provider overwrites the first
+  tab's verifier; the first callback then fails with "expired sign-in
+  session". This is a UX rough edge, not a security weakness -- the
+  validation correctly rejects the mismatch. Users hitting this should
+  retry the sign-in in a single tab. A future revision is expected to
+  move the verifier into a state-keyed server-side store.
+
+- **The OIDC `userinfo` endpoint is not consulted.** All claims come from
+  the ID token (`tokenSet.claims()`). If your identity provider exposes
+  the `email` claim only via `/userinfo` and not in the ID token, set up
+  the IdP to include `email` in the ID token, otherwise every sign-in
+  provisions a fresh `sso-<hash>` account and the email-based linking
+  for legacy password accounts never fires.
+
 ## Example: public instance with externally-hosted legal pages and signup
 
 ```bash
