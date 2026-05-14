@@ -181,7 +181,10 @@ const stmtConsumeInvite = db.prepare(
 // Cached per `redirectUri` so a stray early call with the wrong scheme
 // (e.g. an internal http healthcheck before the reverse proxy injected
 // X-Forwarded-Proto) doesn't pin the client to a stale redirect URI for
-// the rest of the process lifetime.
+// the rest of the process lifetime. A hard cap with FIFO eviction keeps
+// the map bounded if a misconfigured proxy or hostile direct caller
+// varies the Host / X-Forwarded-Host header.
+const OIDC_CLIENT_CACHE_LIMIT = 16
 let _oidcIssuer = null
 const _oidcClients = new Map()
 async function getOidcClient(redirectUri) {
@@ -194,6 +197,10 @@ async function getOidcClient(redirectUri) {
     redirect_uris: [redirectUri],
     response_types: ['code'],
   })
+  if (_oidcClients.size >= OIDC_CLIENT_CACHE_LIMIT) {
+    const oldest = _oidcClients.keys().next().value
+    if (oldest !== undefined) _oidcClients.delete(oldest)
+  }
   _oidcClients.set(redirectUri, client)
   return client
 }
@@ -248,12 +255,23 @@ function clearCookie(res, name) {
 }
 
 // Simple session store: in-memory map keyed by session id (UUID).
-// Each session entry: { username, createdAt }. Not persisted -- sessions
-// are invalidated on restart. For the OIDC flow this is intentional:
-// the operator can add a persistent session store later if needed.
+// Each session entry: { username, plainAuthToken, createdAt }. Not
+// persisted -- sessions are invalidated on restart. For the OIDC flow
+// this is intentional: the operator can add a persistent session store
+// later if needed.
 const sessions = new Map()
 const SESSION_COOKIE = 'stift_sid'
 const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000 // 24h
+
+// Periodic sweep: getSession deletes expired entries on access, but
+// abandoned sessions (browser tab closed, no further requests) would
+// otherwise sit in memory until restart. Runs every 10 minutes.
+setInterval(() => {
+  const now = Date.now()
+  for (const [sid, sess] of sessions) {
+    if (now - sess.createdAt > SESSION_MAX_AGE_MS) sessions.delete(sid)
+  }
+}, 10 * 60 * 1000).unref()
 
 function createSession(username, plainAuthToken) {
   const sid = randomUUID()
