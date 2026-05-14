@@ -1,6 +1,7 @@
 // OIDC user schema initialisation and find-or-create (UPSERT) logic.
 // Extracted from server.js so these functions can be unit-tested in isolation.
 import { randomBytes, createHash } from 'crypto'
+import { hashAuthToken } from './auth-token.js'
 
 // initUserSchema sets up the users table and the OIDC-related columns/index.
 // Safe to call multiple times (all DDL is idempotent).
@@ -100,12 +101,14 @@ export function findOrCreateUser(db, { externalId, email = null, username = null
   // UPSERT: race-safe for concurrent first-login callbacks with the same sub.
   // ON CONFLICT updates email only, leaving all other columns unchanged, so
   // exactly one row is ever created per externalId.
+  // The auth_token column stores the hashed value so a DB leak doesn't
+  // hand out usable bearer tokens. The plaintext is never persisted.
   db.prepare(`
     INSERT INTO users
       (username, auth_token, role, max_projects, can_share_projects, created_at, external_oidc_sub, email)
     VALUES (?, ?, 'user', ?, 1, ?, ?, ?)
     ON CONFLICT(external_oidc_sub) DO UPDATE SET email = excluded.email
-  `).run(candidate, authToken, maxProjects, now, externalId, email)
+  `).run(candidate, hashAuthToken(authToken), maxProjects, now, externalId, email)
 
   const inserted = stmtByOidcSub.get(externalId)
   const created = inserted.username === candidate

@@ -5,6 +5,7 @@ import { randomUUID, randomBytes, timingSafeEqual, createHmac } from 'crypto'
 import Database from 'better-sqlite3'
 import { Issuer, generators } from 'openid-client'
 import { initUserSchema, findOrCreateUser } from './lib/oidc-users.js'
+import { hashAuthToken, verifyAuthToken, isHashedAuthToken } from './lib/auth-token.js'
 import { initOutboxSchema, enqueueWebhook, dueRetries, markDelivered, scheduleRetry } from './lib/oidc-outbox.js'
 
 // Server configuration. Adjust as needed for your deployment.
@@ -237,10 +238,28 @@ const sessions = new Map()
 const SESSION_COOKIE = 'stift_sid'
 const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000 // 24h
 
-function createSession(username) {
+function createSession(username, plainAuthToken) {
   const sid = randomUUID()
-  sessions.set(sid, { username, createdAt: Date.now() })
+  sessions.set(sid, { username, plainAuthToken, createdAt: Date.now() })
   return sid
+}
+
+// Issue a fresh server-side bearer token for the user, store only its hash,
+// and return the plaintext for one-shot delivery to the SPA via the OIDC
+// session. Called on every OIDC sign-in (first and returning): a DB leak
+// then only exposes hashes, and rotation invalidates the previous token.
+function rotateAuthToken(username) {
+  const plain = randomBytes(32).toString('hex')
+  db.prepare('UPDATE users SET auth_token = ? WHERE username = ?').run(hashAuthToken(plain), username)
+  return plain
+}
+
+// After a successful password compare, the stored value is still legacy
+// plaintext from a pre-hash deployment. Rewrite it as a hash in place so
+// the upgrade happens lazily on the user's next login.
+function maybeUpgradeStoredAuthToken(username, stored, plain) {
+  if (isHashedAuthToken(stored)) return
+  db.prepare('UPDATE users SET auth_token = ? WHERE username = ?').run(hashAuthToken(plain), username)
 }
 function getSession(req) {
   const cookies = parseCookies(req)
@@ -321,7 +340,7 @@ const consumeInviteTxn = db.transaction((token, username, authToken) => {
     const e = new Error('user_exists'); e.code = 'user_exists'; throw e
   }
   const now = new Date().toISOString()
-  stmtInsertUser.run(username, authToken, 'user', inv.max_projects, inv.can_share_projects, now)
+  stmtInsertUser.run(username, hashAuthToken(authToken), 'user', inv.max_projects, inv.can_share_projects, now)
   const result = stmtConsumeInvite.run(now, username, token)
   if (result.changes !== 1) {
     // Race: another consumer beat us between get and update.
@@ -366,9 +385,12 @@ async function migrateLegacyUserFiles() {
       if (!u.username || !u.authToken) continue
       const safeName = sanitizeUsername(u.username)
       if (!safeName) { console.warn(`Migration: skipping invalid legacy username in ${f}`); continue }
+      // Pre-SQLite JSON files held the authToken in plaintext. Persist it
+      // as a hash here so the migrated rows have the same protections as
+      // newly-registered ones.
       stmtInsertUser.run(
         safeName,
-        u.authToken,
+        hashAuthToken(u.authToken),
         u.role || 'user',
         u.maxProjects ?? DEFAULT_MAX_PROJECTS_PER_USER,
         1,
@@ -426,18 +448,6 @@ function isValidProjectId(id) {
   return typeof id === 'string' && UUID_RE.test(id)
 }
 
-// Constant-time string comparison. Falls back to a deliberate failure when
-// either side is missing or the lengths differ. Both branches are still O(1)
-// from the caller's perspective. Used everywhere a secret comparison happens
-// so an attacker can't recover tokens via response-time timing.
-function safeEqual(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string') return false
-  const ab = Buffer.from(a)
-  const bb = Buffer.from(b)
-  if (ab.length !== bb.length) return false
-  return timingSafeEqual(ab, bb)
-}
-
 // Rate limiting for unauthenticated endpoints.
 //
 // The auth endpoints (/api/auth/login, /api/auth/register,
@@ -490,7 +500,8 @@ async function authenticate(req) {
   const username = req.headers['x-auth-username']
   if (!token || !username) return null
   const user = getUser(username)
-  if (!user || !safeEqual(user.authToken, token)) return null
+  if (!user || !verifyAuthToken(user.authToken, token)) return null
+  maybeUpgradeStoredAuthToken(user.username, user.authToken, token)
   return user
 }
 
@@ -643,7 +654,11 @@ const server = createServer(async (req, res) => {
         }).catch(() => {})
       }
       const user = rowToUser(userRow)
-      const sid = createSession(user.username)
+      // Issue a fresh server-side bearer token on every OIDC sign-in. The
+      // stored column is the hash; the plaintext only lives in the in-memory
+      // session and is handed to the bridge for localStorage.
+      const plainAuthToken = rotateAuthToken(user.username)
+      const sid = createSession(user.username, plainAuthToken)
       const secure = proto === 'https'
       setCookie(res, SESSION_COOKIE, signValue(sid), { maxAge: SESSION_MAX_AGE_MS / 1000, secure })
       // Bridge page instead of a plain 302: the SPA reads username +
@@ -703,10 +718,14 @@ const server = createServer(async (req, res) => {
       if (!sess) return json(res, { authenticated: false })
       const user = getUser(sess.username)
       if (!user) return json(res, { authenticated: false })
+      // The plaintext auth_token only exists in the in-memory session map
+      // (set by createSession at OIDC callback time). The DB only stores
+      // the hash; we never recompute the plaintext from it.
+      if (!sess.plainAuthToken) return json(res, { authenticated: false })
       return json(res, {
         authenticated: true,
         username: user.username,
-        authToken: user.authToken,
+        authToken: sess.plainAuthToken,
         maxProjects: user.maxProjects,
         canShareProjects: user.canShareProjects,
       })
@@ -765,7 +784,7 @@ const server = createServer(async (req, res) => {
       const uname = sanitizeUsername(username)
       if (!uname) return json(res, { error: 'Invalid username' }, 400)
       if (getUser(uname)) return json(res, { error: 'User already exists' }, 409)
-      stmtInsertUser.run(uname, authToken, 'user', DEFAULT_MAX_PROJECTS_PER_USER, 1, new Date().toISOString())
+      stmtInsertUser.run(uname, hashAuthToken(authToken), 'user', DEFAULT_MAX_PROJECTS_PER_USER, 1, new Date().toISOString())
       await mkdir(userProjectDir(uname), { recursive: true })
       return json(res, { ok: true }, 201)
     }
@@ -804,9 +823,10 @@ const server = createServer(async (req, res) => {
       const uname = sanitizeUsername(username)
       if (!uname) return json(res, { error: 'Invalid username' }, 400)
       const user = getUser(uname)
-      if (!user || typeof authToken !== 'string' || !safeEqual(user.authToken, authToken)) {
+      if (!user || typeof authToken !== 'string' || !verifyAuthToken(user.authToken, authToken)) {
         return json(res, { error: 'Invalid username or password' }, 401)
       }
+      maybeUpgradeStoredAuthToken(user.username, user.authToken, authToken)
       const inv = stmtGetInvite.get(invite)
       if (!inv) return json(res, { error: 'Invitation not found' }, 404)
       if (inv.consumed_at) return json(res, { error: 'Invitation has already been used' }, 409)
@@ -826,9 +846,10 @@ const server = createServer(async (req, res) => {
       // Use the constant-time helper rather than !==. The auth token is the
       // user's secret credential, and byte-by-byte short-circuit comparison
       // would expose a (small) timing oracle.
-      if (!user || typeof authToken !== 'string' || !safeEqual(user.authToken, authToken)) {
+      if (!user || typeof authToken !== 'string' || !verifyAuthToken(user.authToken, authToken)) {
         return json(res, { error: 'Invalid credentials' }, 401)
       }
+      maybeUpgradeStoredAuthToken(user.username, user.authToken, authToken)
       const projectCount = await countUserProjects(username)
       return json(res, { ok: true, role: user.role, projectCount, maxProjects: user.maxProjects, canShareProjects: user.canShareProjects })
     }
