@@ -1,0 +1,10 @@
+# Stift security disclosure (RFC 9116).
+#
+# This file ships with the OSS build. Self-hosters should override it for
+# their deployment so reports reach a contact under their control: replace
+# this file in public/.well-known/ before running `npm run build`, or
+# overlay a custom copy onto the container's /app/static/.well-known/.
+
+Contact: https://github.com/DL6ER/stift/security/advisories/new
+Expires: 2027-12-31T23:59:59Z
+Preferred-Languages: en, de
