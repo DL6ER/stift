@@ -291,7 +291,14 @@ function clearCookie(res, name) {
 // later if needed.
 const sessions = new Map()
 const SESSION_COOKIE = 'stift_sid'
-const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000 // 24h
+// Operators can shorten or lengthen the OIDC session lifetime via the
+// SESSION_MAX_AGE_HOURS env var. Clamped to 1..720h (1h..30d) so a typo
+// cannot disable sessions instantly or pin them open for years.
+const _rawSessionHours = parseInt(process.env.SESSION_MAX_AGE_HOURS || '24', 10)
+const SESSION_MAX_AGE_HOURS = Number.isFinite(_rawSessionHours)
+  ? Math.min(720, Math.max(1, _rawSessionHours))
+  : 24
+const SESSION_MAX_AGE_MS = SESSION_MAX_AGE_HOURS * 60 * 60 * 1000
 
 // Periodic sweep: getSession deletes expired entries on access, but
 // abandoned sessions (browser tab closed, no further requests) would
