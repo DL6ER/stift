@@ -20,8 +20,16 @@
 	# Security headers. The Stift container's nginx already sets most of
 	# these, but we re-set them here so the values stay consistent across
 	# upstreams and so HSTS (only meaningful over HTTPS) is added.
+	#
+	# HSTS is shipped without `preload` on purpose. Submitting a domain to
+	# the browser-vendor HSTS preload list locks every subdomain to HTTPS
+	# for months even after a removal request, which is rarely the right
+	# default for a self-hosted deployment. Operators who want it can opt
+	# in by appending `; preload` here and following the procedure at
+	# https://hstspreload.org -- but only after the domain has run with
+	# HSTS reliably for some time.
 	header {
-		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
