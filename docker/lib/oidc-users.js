@@ -66,12 +66,9 @@ export function initUserSchema(db) {
   // A non-partial unique index is required for the ON CONFLICT(external_oidc_sub)
   // UPSERT clause to work. SQLite treats NULL values as distinct, so multiple
   // rows with external_oidc_sub = NULL are still allowed.
-  // Drop the old partial index if it exists, then create the non-partial one.
-  db.exec(`
-    DROP INDEX IF EXISTS idx_users_oidc_sub;
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_oidc_sub
-      ON users(external_oidc_sub);
-  `)
+  db.exec(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_oidc_sub ON users(external_oidc_sub)'
+  )
 }
 
 // findOrCreateUser looks up a user by externalId (OIDC subject claim).
