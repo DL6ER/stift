@@ -314,10 +314,18 @@ export default function App() {
 
   // Drag-and-drop .stift project files
   useEffect(() => {
+    const MAX_STIFT_FILE_BYTES = 50 * 1024 * 1024 // 50 MB
     const handleDrop = (e: DragEvent) => {
       e.preventDefault()
       const file = e.dataTransfer?.files[0]
       if (!file || !file.name.endsWith('.stift')) return
+      // Guard against a stray multi-GB drop that would freeze the tab on
+      // file.text() and JSON.parse. Real projects after image compression
+      // sit well below 10 MB; 50 MB is generous headroom.
+      if (file.size > MAX_STIFT_FILE_BYTES) {
+        console.warn(`Refusing to load .stift file: ${(file.size / 1024 / 1024).toFixed(1)} MB exceeds the 50 MB limit`)
+        return
+      }
       file.text().then((text) => {
         const project = JSON.parse(text)
         useProjectStore.getState().loadProject(project)
