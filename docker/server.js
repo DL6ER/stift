@@ -151,6 +151,23 @@ if (OIDC_ENABLED) {
     console.error(`OIDC_ENABLED=true but required variable(s) missing: ${missing.join(', ')}`)
     process.exit(1)
   }
+  // Guard against an OIDC_REDIRECT_PATH that collides with an existing API
+  // route or with the SPA fallback. A redirect under /api/... or /assets/...
+  // would either be shadowed by a more specific handler or fail nginx's
+  // static-asset try_files. Refuse to start instead of silently rendering
+  // every callback as 404.
+  const RESERVED_OIDC_REDIRECT_PREFIXES = ['/api/', '/assets/', '/oidc/login', '/oidc/bridge.js']
+  const conflictsWith = RESERVED_OIDC_REDIRECT_PREFIXES.find(p =>
+    OIDC_REDIRECT_PATH === p.replace(/\/$/, '') || OIDC_REDIRECT_PATH.startsWith(p)
+  )
+  if (conflictsWith) {
+    console.error(`OIDC_REDIRECT_PATH (${OIDC_REDIRECT_PATH}) conflicts with the reserved prefix ${conflictsWith}`)
+    process.exit(1)
+  }
+  if (!OIDC_REDIRECT_PATH.startsWith('/')) {
+    console.error(`OIDC_REDIRECT_PATH must start with /, got: ${OIDC_REDIRECT_PATH}`)
+    process.exit(1)
+  }
 }
 
 // A webhook URL without a signing secret would still send "signed" payloads,
