@@ -96,7 +96,7 @@ if (SPONSOR_URL && !/^https?:\/\//i.test(SPONSOR_URL)) {
 //
 // Set OIDC_ENABLED=true to activate the SSO flow. When enabled, the auth
 // dialog shows a provider-neutral SSO button whose label is controlled by
-// OIDC_LOGIN_LABEL (defaults to "Mit Single Sign-On anmelden"). Password-
+// OIDC_LOGIN_LABEL (defaults to "Sign in with single sign-on"). Password-
 // based login is hidden when SSO is active.
 //
 // Required when OIDC_ENABLED=true:
@@ -107,6 +107,7 @@ if (SPONSOR_URL && !/^https?:\/\//i.test(SPONSOR_URL)) {
 // Optional:
 //   OIDC_REDIRECT_PATH        -- callback path (default /oidc/callback)
 //   OIDC_LOGIN_LABEL          -- button label shown in the auth dialog
+//                                (default English; override per locale)
 //   OIDC_PROVISION_WEBHOOK_URL    -- POST target when a new user is created via SSO
 //   OIDC_PROVISION_WEBHOOK_SECRET -- HMAC-SHA256 signing key for the webhook
 const OIDC_ENABLED = (process.env.OIDC_ENABLED || '').toLowerCase() === 'true'
@@ -114,7 +115,7 @@ const OIDC_ISSUER_URL = process.env.OIDC_ISSUER_URL || ''
 const OIDC_CLIENT_ID = process.env.OIDC_CLIENT_ID || ''
 const OIDC_CLIENT_SECRET = process.env.OIDC_CLIENT_SECRET || ''
 const OIDC_REDIRECT_PATH = (process.env.OIDC_REDIRECT_PATH || '/oidc/callback').replace(/\/$/, '')
-const OIDC_LOGIN_LABEL = process.env.OIDC_LOGIN_LABEL || 'Mit Single Sign-On anmelden'
+const OIDC_LOGIN_LABEL = process.env.OIDC_LOGIN_LABEL || 'Sign in with single sign-on'
 const OIDC_PROVISION_WEBHOOK_URL = process.env.OIDC_PROVISION_WEBHOOK_URL || ''
 const OIDC_PROVISION_WEBHOOK_SECRET = process.env.OIDC_PROVISION_WEBHOOK_SECRET || ''
 

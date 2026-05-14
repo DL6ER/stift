@@ -29,7 +29,7 @@ Set `OIDC_ENABLED=true` to delegate login to an external identity provider. When
 | `OIDC_CLIENT_ID` | unset | Client identifier registered at the identity provider. |
 | `OIDC_CLIENT_SECRET` | unset | Confidential client secret. Keep out of version control. |
 | `OIDC_REDIRECT_PATH` | `/oidc/callback` | Callback path appended to `PUBLIC_BASE_URL`; must match what is registered at the provider. |
-| `OIDC_LOGIN_LABEL` | `Mit Single Sign-On anmelden` | Text shown on the SSO button in the auth dialog. |
+| `OIDC_LOGIN_LABEL` | `Sign in with single sign-on` | Text shown on the SSO button in the auth dialog. Override per locale, e.g. `OIDC_LOGIN_LABEL='Mit Single Sign-On anmelden'`. |
 | `OIDC_PROVISION_WEBHOOK_URL` | unset | When set, a `POST` with `{sso_user_id, stift_user_id, email}` is sent on first-time login of a new user. Failures are queued in an on-disk outbox and retried with exponential backoff. |
 | `OIDC_PROVISION_WEBHOOK_SECRET` | unset | HMAC-SHA256 signing key for the provision webhook. Required if `OIDC_PROVISION_WEBHOOK_URL` is set; sent as `x-stift-oss-signature: sha256=<hex>`. |
 | `SESSION_SECRET` | random per startup | HMAC key for OIDC session cookies. When unset, a fresh 32-byte random value is generated on every process start, which invalidates every active OIDC session on restart. Set explicitly for HA or rolling-restart deployments where sessions must survive a process restart; pick a high-entropy value (`openssl rand -hex 32`) and treat it as a long-lived secret. |
