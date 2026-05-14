@@ -676,6 +676,15 @@ const server = createServer(async (req, res) => {
   }
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return }
 
+  // Throttle the unauthenticated OIDC entry points too. /oidc/login mints
+  // a PKCE verifier + S256 challenge and signs three cookies on every hit;
+  // /oidc/callback runs a full openid-client token exchange. Without a
+  // bucket, a bot can spam either of these from a single IP and burn
+  // CPU + drive load against the IdP.
+  if ((path === '/oidc/login' || path === OIDC_REDIRECT_PATH || path === '/api/oidc/logout') && OIDC_ENABLED) {
+    if (!rateLimit(req)) return json(res, { error: 'Too many requests, slow down' }, 429)
+  }
+
   if (DEV_MODE) {
     console.log(`[dev] ${req.method} ${path}` + (req.headers['x-auth-username'] ? ` (user=${req.headers['x-auth-username']})` : ''))
     res.on('finish', () => console.log(`[dev]   -> ${res.statusCode} in ${Date.now() - startedAt}ms`))
