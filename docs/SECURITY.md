@@ -48,6 +48,22 @@ future revision is expected to move the name into the encrypted body
 and surface only a separately-encrypted `nameCiphertext` for the
 listing.
 
+### Local autosave is unencrypted
+
+Every 30 seconds the SPA stashes the in-progress project into
+`localStorage` under `stift-autosave` so a tab reload, browser crash,
+or accidental close does not lose work. This snapshot **does not pass
+through the E2E encryption layer** -- it is plain JSON, including any
+image data, sitting next to the auth token in the browser's local
+storage. Both rely on the same defence: the strict
+`script-src 'self'` CSP keeps third-party scripts out, and the SPA
+itself does not load remote code.
+
+If you work with material you cannot afford to expose to a successful
+XSS against the SPA, clear the autosave (`Clear local storage` in the
+browser dev tools) at the end of each session, or disable autosave via
+the editor settings.
+
 ### SSO accounts: set your encryption passphrase immediately
 
 When you first sign in via Single Sign-On (SSO), Stift asks you to pick a
