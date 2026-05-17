@@ -1176,8 +1176,14 @@ const server = createServer(async (req, res) => {
         try {
           const raw = await readFile(join(dir, f), 'utf-8')
           const data = JSON.parse(raw)
+          // Projects written after R4-M1 (b) carry a separately-encrypted
+          // nameCiphertext field. Legacy projects still have a plaintext
+          // name. Forward both so the SPA can render either without an
+          // extra round-trip; the SPA prefers nameCiphertext when present.
           projects.push({
-            id: f.replace('.json', ''), name: data.name || 'Untitled',
+            id: f.replace('.json', ''),
+            name: data.name || (data.nameCiphertext ? '' : 'Untitled'),
+            nameCiphertext: data.nameCiphertext || null,
             updatedAt: data.updatedAt || new Date().toISOString(),
             imageCount: data.images?.length || data.imageCount || 0,
             annotationCount: data.annotations?.length || data.annotationCount || 0,

@@ -32,21 +32,24 @@ When using server storage, Stift encrypts all project data client-side before it
 
 ### What is visible to the server
 
-For server-stored projects the SPA sends a payload of the form
-`{ encrypted: true, name, updatedAt, data: ciphertext }`. The server
-therefore sees:
+For server-stored projects written by current SPA builds the payload is
+`{ encrypted: true, nameCiphertext, updatedAt, data: ciphertext }`. The
+server therefore sees:
 
-- the **project name** (used for the listing UI; not inside the encrypted blob)
 - the **update timestamp** (the server would learn this from the file mtime anyway)
 - the **ciphertext size**, which gives a rough hint about image count and resolution
 - the **owner username** and any **shared members**, since the server gates access on them
 
+The project name lives inside `nameCiphertext`, a small separately-
+encrypted blob the SPA decrypts per row when rendering the project list.
 Everything inside `data` -- images, annotations, canvas dimensions, ROIs,
-connectors -- is encrypted and unreadable to the server. If the project
-name itself is sensitive, save locally instead of to the server. A
-future revision is expected to move the name into the encrypted body
-and surface only a separately-encrypted `nameCiphertext` for the
-listing.
+connectors -- is also encrypted and unreadable to the server.
+
+Projects saved by older SPA builds may still carry the legacy plaintext
+`name` field alongside the rest; those names remain visible to the
+server until the project is re-saved through a current SPA. Shared
+projects (under `/api/shared/`) still expose the name in plaintext at
+the moment -- a per-member name wrap is on the backlog.
 
 ### Local autosave is unencrypted
 

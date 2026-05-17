@@ -18,6 +18,11 @@ import * as api from '../lib/api'
 interface ServerProject {
   id: string
   name: string
+  // For encrypted projects written after R4-M1 (b), the listing returns a
+  // small, separately-encrypted nameCiphertext instead of (or alongside)
+  // the plaintext name. The SPA decrypts it per row with the user's
+  // personal key so the displayed name never leaves the browser in clear.
+  nameCiphertext?: string | null
   updatedAt: string
   imageCount: number
   annotationCount: number
@@ -53,8 +58,23 @@ export function ServerExplorer({ mode, onClose }: Props) {
   const loadProjects = async () => {
     try {
       setLoading(true)
-      const data = await api.listProjects() as unknown as ServerProject[]
-      setProjects(data)
+      const raw = await api.listProjects() as unknown as ServerProject[]
+      // Decrypt nameCiphertext per row when present. Legacy rows that still
+      // carry a plaintext name pass through unchanged, so deployments
+      // mid-migration render both formats correctly. A failing decrypt
+      // (wrong key or corrupted blob) falls back to a placeholder rather
+      // than blowing up the entire listing.
+      const decoded = await Promise.all(raw.map(async (p) => {
+        if (p.nameCiphertext && encryptionKey) {
+          try {
+            return { ...p, name: await decrypt(encryptionKey, p.nameCiphertext) }
+          } catch {
+            return { ...p, name: '(name decrypt failed)' }
+          }
+        }
+        return p
+      }))
+      setProjects(decoded)
       setError(null)
     } catch (e) {
       setError('Failed to connect to server')
@@ -92,14 +112,18 @@ export function ServerExplorer({ mode, onClose }: Props) {
       }
       let payload: any = project
 
-      // Encrypt if authenticated
+      // Encrypt if authenticated. The project name goes into its own small
+      // ciphertext field so the listing endpoint can return it without ever
+      // seeing the plaintext name -- closes the "zero knowledge but project
+      // names leak" gap documented in earlier audit rounds.
       if (encryptionKey) {
         const plaintext = JSON.stringify(project)
         const ciphertext = await encrypt(encryptionKey, plaintext)
+        const nameCiphertext = await encrypt(encryptionKey, project.name)
         payload = {
           encrypted: true,
           owner: username,
-          name: project.name,
+          nameCiphertext,
           updatedAt: new Date().toISOString(),
           data: ciphertext,
         }
