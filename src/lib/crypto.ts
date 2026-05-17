@@ -12,11 +12,14 @@
  * Password loss = data loss. This is by design.
  */
 
-// 600k PBKDF2-SHA256 iterations matches the OWASP 2023 password-storage
-// cheat sheet recommendation. Bumping this later is fine (slower logins
-// for the same user), but lowering it retroactively silently weakens
-// anyone whose password has already been used to derive a key.
-const PBKDF2_ITERATIONS = 600000
+// 1.2M PBKDF2-SHA256 iterations roughly doubles the 2023 OWASP cheat
+// sheet's 600k recommendation, keeping pace with commodity hardware
+// improvements. Lowering this retroactively would silently weaken every
+// user whose password has already been used to derive a key, so future
+// bumps are fine (slower logins for the same user) but reductions need a
+// migration plan. Login derivation cost on a mid-range 2024 laptop:
+// roughly 500-800 ms across the PBKDF2 + HKDF chain.
+const PBKDF2_ITERATIONS = 1200000
 const KEY_LENGTH = 256 // bits
 
 // NFC-normalise the username before feeding it into the salt. Two visually

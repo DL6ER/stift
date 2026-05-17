@@ -19,10 +19,10 @@ describe('crypto module structure', () => {
 })
 
 describe('crypto security properties (source inspection)', () => {
-  it('PBKDF2 iterations >= 600,000 (OWASP 2023 recommendation)', () => {
+  it('PBKDF2 iterations >= 1,200,000 (post-OWASP-2023 hardening)', () => {
     const match = source.match(/PBKDF2_ITERATIONS\s*=\s*(\d+)/)
     expect(match).toBeTruthy()
-    expect(parseInt(match![1])).toBeGreaterThanOrEqual(600000)
+    expect(parseInt(match![1])).toBeGreaterThanOrEqual(1200000)
   })
 
   it('AES key length is 256 bits', () => {
