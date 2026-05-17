@@ -10,7 +10,15 @@ import { initOutboxSchema, enqueueWebhook, dueRetries, markDelivered, scheduleRe
 
 // Server configuration. Adjust as needed for your deployment.
 const DATA_DIR = process.env.DATA_DIR || '/data'
-const PORT = 3001
+// The API server binds to 127.0.0.1:STIFT_API_PORT; nginx in the container
+// proxies the public 8080 to this loopback port, so changing it only
+// matters for bare-node deployments and for the integration tests, which
+// pick a free port per run to avoid clashing with anything else listening
+// on 3001. Falls back to 3001 to keep the existing nginx upstream working.
+const _rawApiPort = parseInt(process.env.STIFT_API_PORT || '3001', 10)
+const PORT = Number.isFinite(_rawApiPort) && _rawApiPort >= 1 && _rawApiPort <= 65535
+  ? _rawApiPort
+  : 3001
 
 // parseEnvInt reads an integer env var with a default and clamps it into the
 // allowed range. A non-numeric value (e.g. MAX_PROJECT_SIZE_MB="fifteen")
