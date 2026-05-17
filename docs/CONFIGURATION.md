@@ -50,12 +50,14 @@ For any public OIDC deployment also set `STIFT_PUBLIC_URL` (see the table at the
   retry the sign-in in a single tab. A future revision is expected to
   move the verifier into a state-keyed server-side store.
 
-- **The OIDC `userinfo` endpoint is not consulted.** All claims come from
-  the ID token (`tokenSet.claims()`). If your identity provider exposes
-  the `email` claim only via `/userinfo` and not in the ID token, set up
-  the IdP to include `email` in the ID token, otherwise every sign-in
-  provisions a fresh `sso-<hash>` account and the email-based linking
-  for legacy password accounts never fires.
+- **`userinfo` is only called as a fallback for the email claim.** The
+  callback handler reads `sub`, `email` and `email_verified` from the ID
+  token first. When the ID token is silent on email, it makes a single
+  `userinfo` call and reads the same fields from there before giving up
+  on email-based account linking. Other claims (name, picture, locale)
+  are not requested -- Stift does not need them. A failing `userinfo`
+  call is logged but does not abort the sign-in; the user just ends up
+  on a fresh `sso-<hash>` account without email linkage.
 
 ## Example: public instance with externally-hosted legal pages and signup
 

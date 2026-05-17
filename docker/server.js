@@ -254,6 +254,17 @@ const stmtConsumeInvite = db.prepare(
   'UPDATE invitations SET consumed_at = ?, consumed_by = ? WHERE token = ? AND consumed_at IS NULL'
 )
 
+// Extract a verified, lowercased email from either an ID-token claims set
+// or a userinfo response. Both shapes share the same `email` /
+// `email_verified` field names per OpenID Connect Core 1.0 §5.1, so a
+// single helper covers both call sites in the callback handler.
+function pickVerifiedEmail(claims) {
+  if (!claims || typeof claims !== 'object') return null
+  if (claims.email_verified !== true) return null
+  const raw = typeof claims.email === 'string' ? claims.email.toLowerCase().trim() : ''
+  return raw || null
+}
+
 // ── OIDC client (discovered lazily on first use) ──────────────────────────
 //
 // Cached per `redirectUri` so a stray early call with the wrong scheme
@@ -889,8 +900,22 @@ const server = createServer(async (req, res) => {
       // unverified email must not be used to link to an existing local
       // account (see findOrCreateUser): otherwise a permissive IdP could
       // assert a victim's email and take over their row.
-      const rawEmail = (claims.email || '').toLowerCase().trim() || null
-      const email = rawEmail && claims.email_verified === true ? rawEmail : null
+      //
+      // Some IdPs only deliver `email` (and `email_verified`) through the
+      // /userinfo endpoint, not in the ID token claims. When the ID token
+      // is silent on the email front, fall back to a single userinfo call
+      // before giving up on email-based account linking. Best-effort: a
+      // failing userinfo call leaves email at null and the sign-in still
+      // succeeds, the user just ends up on a fresh sso-<hash> account.
+      let email = pickVerifiedEmail(claims)
+      if (!email) {
+        try {
+          const ui = await client.userinfo(tokenSet)
+          email = pickVerifiedEmail(ui)
+        } catch (e) {
+          console.warn('[oidc] userinfo fallback failed:', e.message)
+        }
+      }
       if (!sub) {
         res.writeHead(302, { Location: '/?oidc_error=no_sub' })
         res.end()
